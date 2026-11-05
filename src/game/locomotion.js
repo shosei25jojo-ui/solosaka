@@ -3,8 +3,10 @@ import { J, JOINT_COUNT, BODY } from './skeleton.js';
 /**
  * 手続き型の走行モーション（3D 骨格を毎ステップ解く）
  *
- * - 位相ベースの歩行/走行サイクル。速度からケイデンス・デューティ比（接地率）・
- *   遊脚の高さを連続的に決め、歩き→ジョグ→スプリントを滑らかにブレンド。
+ * - 位相は「時間」ではなく「移動距離」で進める: 位相の増分 = 移動距離 ÷ (2 × ストライド)
+ *   （1 サイクル = 2 歩）。ストライドとピッチは gait.js の GaitController が決める。
+ *   これにより接地足がワールドに対して滑らない。
+ * - 足が接地した瞬間に onContact(side, footPos) を発火（ドリブルのタッチ・向き決定に使う）。
  * - 接地中の足はワールドに固定（足滑りなし）。遊脚は離地点から「着地予測点」へ
  *   遅れ気味に追従させることで、走りのヒールキック → ニードライブ → 振り戻しが自然に出る。
  * - 膝は 2 ボーン IK、骨盤高さは届く範囲にクランプ。
@@ -52,6 +54,8 @@ export class Locomotion {
     this.joints = new Float32Array(JOINT_COUNT * 3);
     this.prevJoints = new Float32Array(JOINT_COUNT * 3);
     this.gait = { r: 0, s: 0, freq: 0, duty: 0.6 };
+    this.duty = 0.36;
+    this.onContact = null; // (side, footPos) => void
   }
 
   reset(p) {
@@ -64,28 +68,35 @@ export class Locomotion {
       leg.pos[2] = BODY.ankleH;
       leg.dir = p.heading;
     }
-    this.update(p, 1 / 60);
+    this.update(p, 1 / 60, 0);
     this.prevJoints.set(this.joints);
   }
 
-  update(p, dt) {
+  /** @param dist この固定ステップで体が進んだ距離 (m) */
+  update(p, dt, dist = 0) {
     this.prevJoints.set(this.joints);
     this.time += dt;
     const v = p.speed;
     const th = p.heading;
     const fx = Math.cos(th), fy = Math.sin(th);
     const rx = -fy, ry = fx;
-    const ctrl = p.mode === 'control' ? 1 : 0;
+    const gc = p.gait; // GaitController
+    const ctrl = p.mode === 'control' || p.mode === 'pressNear' ? 1 : 0;
+    const stride = gc ? gc.stride : 0;
+    const baseStride = gc ? gc.profile.baseStride : 1.7;
+    const strideRatio = stride / baseStride;
 
     // ---- 歩容パラメータ ----
-    const r = smoothstep(1.7, 3.1, v);        // 歩き→走り
-    const s = smoothstep(5.4, 8.4, v);        // ジョグ→スプリント
-    const fWalk = 0.55 + 0.27 * Math.max(v, 0.9);
-    // ダッシュ域ではピッチ（回転数）を大きく上げる：8.8m/s で約 2.45 周/秒 ≒ 4.9 歩/秒
-    const fRun = 1.02 + 0.122 * v + 0.36 * s;
-    const freq = lerp(fWalk, fRun, r) * (1 + 0.14 * ctrl);
-    const duty = lerp(0.62, lerp(0.38, 0.26, s), r);
-    const swingH = lerp(0.07 + 0.03 * Math.min(v, 1.5), 0.27 + 0.27 * s, r) * (1 - 0.35 * ctrl);
+    const r = smoothstep(1.7, 3.1, v);                 // 歩き→走り（見た目）
+    const s = smoothstep(1.06, 1.34, strideRatio) * smoothstep(4.5, 6.5, v); // 大股＝スプリントの見た目
+    // ピッチ（歩/秒）→ サイクル周波数。停止中の足踏みは固定値
+    const freq = gc && gc.cadence > 0.1 && v > 0.2 ? gc.cadence / 2 : 0.8;
+    const dutyT = lerp(0.62, gc ? gc.duty : 0.36, r);
+    this.duty += (dutyT - this.duty) * (1 - Math.exp(-dt * 10));
+    const duty = this.duty;
+    const strideK = clamp(stride / 1.7, 0.45, 1.25);
+    const swingH = lerp(0.07 + 0.03 * Math.min(v, 1.5), (0.22 + 0.22 * s) * strideK, r) * (1 - 0.3 * ctrl);
+    const crouch = gc ? gc.crouch : 0;
     const width = lerp(0.105, lerp(0.06, 0.045, s), r);
     this.gait.r = r; this.gait.s = s; this.gait.freq = freq; this.gait.duty = duty;
 
@@ -99,7 +110,12 @@ export class Locomotion {
     }
     const anySwing = !this.legs[0].stance || !this.legs[1].stance;
     const moving = v > 0.22;
-    if (moving || anySwing || restErr > 0.13) this.phase = frac(this.phase + freq * dt);
+    if (moving && stride > 0.15) {
+      // 移動距離で位相を進める（1 サイクル = 2 歩）
+      this.phase = frac(this.phase + dist / (2 * stride));
+    } else if (anySwing || restErr > 0.13) {
+      this.phase = frac(this.phase + freq * dt); // その場の足踏み
+    }
     const act = smoothstep(0.15, 1.2, v);
     this.activity += (act - this.activity) * (1 - Math.exp(-dt * 8));
     const g = this.activity;
@@ -121,6 +137,7 @@ export class Locomotion {
         leg.stance = true;
         leg.pos[2] = BODY.ankleH;
         leg.heelRise = 0;
+        if (this.onContact) this.onContact(leg.side, leg.pos);
       }
       leg.prevPi = pi;
 
@@ -169,7 +186,7 @@ export class Locomotion {
     const lf = Math.cos(TAU * (this.phase - (duty / 2 - 0.25))); // 左脚の前後量 (+1 = 最前)
     const bobPh = Math.cos(2 * TAU * (this.phase - duty / 2));     // 接地中盤で +1
     const bob = lerp(0.016, -0.034 - 0.012 * s, r) * bobPh * g;
-    const baseZ = lerp(BODY.standHipZ, lerp(0.905, 0.885, s), r) - 0.035 * ctrl
+    const baseZ = lerp(BODY.standHipZ, lerp(0.905, 0.885, s), r) - 0.035 * ctrl - 0.07 * crouch
       + Math.sin(this.time * 1.7) * 0.003 * (1 - g); // 呼吸
     const sway = lerp(0.022, 0.008, r) * Math.cos(TAU * (this.phase - duty / 2)) * g; // 支持脚側へ
     let cx = p.x - rx * sway;
@@ -177,7 +194,7 @@ export class Locomotion {
     let cz = baseZ + bob;
 
     // 前傾・内傾（スプリング）
-    const leanT = g * (0.035 + 0.05 * r + 0.17 * s) + clamp(p.accelFwd * 0.032, -0.2, 0.26) + 0.1 * ctrl;
+    const leanT = g * (0.035 + 0.05 * r + 0.17 * s) + clamp(p.accelFwd * 0.032, -0.2, 0.26) + 0.1 * ctrl + 0.05 * crouch;
     this.lean += (leanT - this.lean) * (1 - Math.exp(-dt / 0.14));
     const sideT = clamp(Math.atan((v * p.turnRate) / 9.81) * 0.9, -0.38, 0.38);
     this.sideLean += (sideT - this.sideLean) * (1 - Math.exp(-dt / 0.1));
@@ -291,7 +308,7 @@ export class Locomotion {
     set(J.HEAD, nx + hux * hr + fx * 0.025, ny + huy * hr + fy * 0.025, nz + huz * hr);
 
     // ---- 腕 ----
-    const swingAmp = g * lerp(0.3, lerp(0.48, 0.72, s), r) * (1 - 0.45 * ctrl);
+    const swingAmp = g * lerp(0.3, lerp(0.48, 0.72, s), r) * (1 - 0.45 * ctrl) * clamp(0.6 + 0.4 * strideK, 0.6, 1.1);
     const flexBase = lerp(0.22 + 0.12 * g, lerp(1.32, 1.5, s), r);
     for (const sd of [-1, 1]) {
       const legF = sd < 0 ? lf : -lf;              // 同側の脚の前後

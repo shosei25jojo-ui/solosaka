@@ -25,7 +25,7 @@ function deadzone(x, y, dz) {
 export class Input {
   constructor() {
     this.keys = new Set();
-    this.touch = { moveX: 0, moveY: 0, dash: false, active: false };
+    this.touch = { moveX: 0, moveY: 0, dash: false, control: false, active: false };
     this.state = {
       moveX: 0, moveY: 0, rightX: 0, rightY: 0,
       dash: false, control: false,
@@ -88,9 +88,10 @@ export class Input {
 
     // タッチ（仮想スティック + DASH）
     const t = this.touch;
-    if (t.active || t.dash) this.source = 'touch';
+    if (t.active || t.dash || t.control) this.source = 'touch';
     if (t.moveX || t.moveY) { mx = t.moveX; my = t.moveY; }
     if (t.dash) btn.dash = true;
+    if (t.control) btn.control = true;
 
     if (this.override) { // 開発・テスト用
       mx = this.override.moveX ?? mx; my = this.override.moveY ?? my;

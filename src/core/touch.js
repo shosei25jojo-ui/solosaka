@@ -11,9 +11,13 @@ export class TouchControls {
     this.base.appendChild(this.knob);
     this.dashBtn = el('div', 'touch-btn');
     this.dashBtn.textContent = 'DASH';
-    this.layer.append(this.base, this.dashBtn);
+    // R2 コントロールドリブル（ストライド×ピッチの確認用）
+    this.ctrlBtn = el('div', 'touch-btn small');
+    this.ctrlBtn.textContent = 'R2';
+    this.layer.append(this.base, this.dashBtn, this.ctrlBtn);
     this.stickId = null;
     this.dashId = null;
+    this.ctrlId = null;
     this.origin = { x: 0, y: 0 };
     this.layout();
     window.addEventListener('resize', () => this.layout());
@@ -45,6 +49,12 @@ export class TouchControls {
     this.dashPos = { x: w - Math.max(bs * 0.9, w * 0.1), y: h - bs * 0.95, r: bs * 0.75 };
     this.dashBtn.style.left = this.dashPos.x + 'px';
     this.dashBtn.style.top = this.dashPos.y + 'px';
+    const cs = bs * 0.72;
+    this.ctrlBtn.style.width = this.ctrlBtn.style.height = cs + 'px';
+    this.ctrlBtn.style.margin = `${-cs / 2}px 0 0 ${-cs / 2}px`;
+    this.ctrlPos = { x: this.dashPos.x - bs * 1.15, y: this.dashPos.y + bs * 0.12, r: cs * 0.6 };
+    this.ctrlBtn.style.left = this.ctrlPos.x + 'px';
+    this.ctrlBtn.style.top = this.ctrlPos.y + 'px';
     if (this.stickId === null) this.placeBase(this.home.x, this.home.y);
   }
 
@@ -58,8 +68,14 @@ export class TouchControls {
   down(e) {
     e.preventDefault();
     const x = e.clientX, y = e.clientY;
-    const dp = this.dashPos;
-    if (Math.hypot(x - dp.x, y - dp.y) < dp.r * 1.25 || (x > window.innerWidth * 0.6 && y > window.innerHeight * 0.45)) {
+    const dp = this.dashPos, cp = this.ctrlPos;
+    if (Math.hypot(x - cp.x, y - cp.y) < cp.r * 1.2) {
+      if (this.ctrlId === null) {
+        this.ctrlId = e.pointerId;
+        this.input.touch.control = true;
+        this.ctrlBtn.classList.add('active');
+      }
+    } else if (Math.hypot(x - dp.x, y - dp.y) < dp.r * 1.25 || (x > window.innerWidth * 0.6 && y > window.innerHeight * 0.45)) {
       if (this.dashId === null) {
         this.dashId = e.pointerId;
         this.input.touch.dash = true;
@@ -105,6 +121,11 @@ export class TouchControls {
       this.input.touch.active = false;
       this.base.classList.remove('active');
       this.placeBase(this.home.x, this.home.y);
+    }
+    if (e.pointerId === this.ctrlId) {
+      this.ctrlId = null;
+      this.input.touch.control = false;
+      this.ctrlBtn.classList.remove('active');
     }
     if (e.pointerId === this.dashId) {
       this.dashId = null;

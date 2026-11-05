@@ -40,16 +40,35 @@
   カメラで投影してテーパー付きカプセルで描画（`src/render/playerRenderer.js`）。
   左右の手足は奥行きで前後関係を決めるので、どの方向に走っても破綻しない。
 - **モーションはリアルなサッカー選手らしさを最優先**（`src/game/locomotion.js`）:
-  - 速度から歩容を連続ブレンド（歩き → ジョグ → スプリント）。ケイデンス・接地率・遊脚高さ・歩隔が変化。
-  - 接地足はワールド固定（足滑りなし）。遊脚は骨盤基準の相対軌道で
+  - **位相は時間ではなく移動距離で進める**（位相の増分 = 移動距離 ÷ (2 × ストライド)、1 サイクル = 2 歩）。
+    足が接地した瞬間に `onContact(side, footPos)` を発火する。
+  - 接地率・遊脚高さ・歩隔は状態とストライドで変化。接地足はワールド固定（足滑りなし）。遊脚は骨盤基準の相対軌道で
     ヒールキック → ニードライブ → 振り出し → パウイング（着地前の引き戻し）。
   - 膝は 2 ボーン IK、骨盤高さは接地足に届く範囲にクランプ。
   - 骨盤の上下動・左右揺れ・回旋、肩の逆回旋、加速時の前傾、旋回時の内傾、
     頭部の安定化、肘角が変化する腕振り、停止時の足踏み（向き直し）と呼吸。
-  - R2 コントロール時は歩幅を詰め、重心を下げ、前傾を強める。
-  - ダッシュ時は回転数（ピッチ）を大きく上げ（約 4.9 歩/秒）、腕は小さく鋭く振り抜く。前傾も強め。
-- 移動物理（`src/game/player.js`）: 速度依存の加速、制動、速度が高いほど旋回半径が大きい、
-  大きな切り返しは一度減速してから。数値は `src/config.js` の `MOVE`。
+  - R2 コントロール・寄せの近距離は歩幅を詰め、重心を下げ、前傾を強める。
+  - ダッシュ時は大股で前傾を強め、腕は小さく鋭く振り抜く。
+
+## 移動: ストライド × ピッチ（`src/game/gait.js`）
+
+- **移動速度 = ストライド（1 歩の距離 m）× ピッチ（歩/秒）**。60Hz 固定ステップ内で計算。
+- 選手ごとに `baseStride` / `baseCadence`（+ 加速 `strideGrowPerStep`・敏捷 `turnPerStep`）を持つ。
+  `makeGaitProfile(abilities)` が能力値（将来 32 項目）から算出する。**調整値はすべて `GAIT` の 1 か所**。
+- 状態ごとの倍率（`GAIT.states`）: ジョグ（小・低）/ 通常走行 / R1 ダッシュ（ストライド大きく伸ばす・ピッチ少し上げ）/
+  R2 コントロール（短く・高く）/ 通常ドリブル（通常走行より少し短め）/ ダッシュドリブル / 寄せ（遠：大股、近：小刻み）。
+- 走り出し: 最初の 4 歩は短い歩幅・高いピッチ（`GAIT.startup`）→ 1 歩ごとにストライドを伸ばしてトップスピードへ。
+- 減速・切り返し: ストライドを詰めて重心を下げる（`crouch`）。曲がり切れない角度が大きいほど次の 1 歩を大きく詰める。
+- **方向転換は接地の瞬間にだけ決まる**。1 歩で曲がれる角度 = `turnPerStep × (refStride / stride)^exp`
+  → 大股ほど次の接地まで遅れ、旋回半径も大きい。小刻みほど切り返しが鋭い。
+- 守備の寄せ（`src/game/defender.js`）: 保持者から `closeDist`(3m) 外は大股、内側は小刻み。残り距離で止まれる速度に絞って寄せる。
+
+## ドリブル（`src/game/dribble.js`・仮のボール `src/game/ball.js`）
+
+- ボールタッチは接地イベントで行う。`GAIT.dribble.touchEvery`（R2 = 毎歩、通常 = 2 歩、ダッシュ = 4 歩）。
+- 押し出す量 = 速度 × (タッチ間隔 ÷ ピッチ) + `lead`。転がり抵抗を考慮して初速を決める。
+- 走り出し・加速中は細かく触る。切り返した歩では向きを変えるタッチを入れる。
+- ボール物理は最小限（STEP B で本格化）。
 
 ## 試合ルール（予定）
 
@@ -72,6 +91,7 @@
 - **DualSense 対応**: Gamepad API の standard mapping
   （0 ×, 1 ○, 2 □, 3 △, 4 L1, 5 R1, 6 L2, 7 R2, axes 0/1 左, 2/3 右）。十字キーでも移動可。
 - **スマホ**: 画面左半分にフローティング仮想スティック、右下に DASH ボタン（`src/core/touch.js`）。
+  確認用に R2 ボタンも置いている。
 - キーボード（開発用）: WASD/矢印 移動、Shift ダッシュ、E コントロール、J × / I △ / K □ / L ○ / Q L1。
 - 入力はすべて `src/core/input.js` の `Input` に集約し、アクション名（`shortPass`, `throughPass`,
   `shoot`, `longPass`, `switchCursor`, `dash`, `control`）で参照する。`justPressed` でエッジ検出可。
@@ -93,14 +113,21 @@ src/config.js         定数（画面・ピッチ・移動・カメラ）。URL 
 src/style.css
 src/core/input.js     入力統合（キーボード / ゲームパッド / タッチ）
 src/core/touch.js     仮想スティック + DASH ボタン
-src/game/player.js    選手の移動物理
+src/game/player.js    選手（入力 → 歩容 → 移動 → モーション、接地イベントの配信）
+src/game/gait.js      ストライド × ピッチ（調整値 GAIT と能力値→プロファイル）
+src/game/dribble.js   接地同期のドリブルタッチ
+src/game/ball.js      仮のボール
+src/game/defender.js  寄せの簡易 AI（テスト用）
 src/game/locomotion.js 走行モーション（3D 骨格の手続き生成）
 src/game/skeleton.js  関節インデックスと体格
 src/render/camera.js  斜め俯瞰透視カメラ（project / depth）
 src/render/textures.js 芝・観客・広告ボードのテクスチャ生成（Canvas）
 src/render/stadium.js ピッチ（PerspectiveMesh）・ライン（ベクター）・スタンド・ゴール
 src/render/playerRenderer.js 選手の描画
-src/ui/hud.js         HUD（速度・モード・FPS）
+src/render/ballRenderer.js ボール描画
+src/ui/hud.js         HUD（DEBUG でストライド・ピッチ・速度・位相・状態）
+src/ui/tunePanel.js   スマホ用調整パネル（ストライド/ピッチ倍率スライダー等）
+tools/build-standalone.mjs 単体 HTML（PixiJS は CDN）を standalone/ に生成
 ```
 
 ## 公開（GitHub Pages）
@@ -108,7 +135,8 @@ src/ui/hud.js         HUD（速度・モード・FPS）
 - `.github/workflows/deploy.yml` が `main` と `ccr-*` ブランチへの push でビルドし、
   `dist/` を **`gh-pages` ブランチ** に公開する。
 - 初回のみリポジトリの Settings → Pages → Source を「Deploy from a branch」/ `gh-pages` / `/(root)` にする。
-- URL: `https://shosei25jojo-ui.github.io/solosaka/`
+- URL: `https://shosei25jojo-ui.github.io/solosaka/`（単体確認用 HTML は `.../solosaka/solosaka-gait.html`）
+- `npm run build` は単体 HTML（`standalone/solosaka-gait.html`、PixiJS は jsDelivr CDN）も生成する。
 - オーナーは **Android の Chrome でのみ確認**する。変更は必ずスマホ（タッチ操作・横画面・全画面）で
   動くことを前提にし、重い処理（毎フレームのテクスチャ再生成など）は避ける。
 
@@ -116,5 +144,5 @@ src/ui/hud.js         HUD（速度・モード・FPS）
 
 - デバッグ用に `window.__solosaka` を公開（`pause()`, `step(n)`, `teleport(x, y)`, `input.override`）。
   ヘッドレスでコマ送りしてモーションを確認できる。
-- 画面右上 `SLOW` で 0.25 倍速（モーション確認用）。
+- 画面右上 `SLOW` で 0.25 倍速（モーション確認用）、`DBG` でデバッグ表示、`TUNE` で倍率スライダー。
 - 描画は Graphics を毎フレーム作り直している。選手が 22 人になったら負荷を計測し、必要ならキャッシュ化する。

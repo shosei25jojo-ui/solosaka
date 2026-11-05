@@ -6,8 +6,9 @@
   "description": "SOLOSAKA - soccer match engine (PixiJS v8 + Vite)",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build",
-    "preview": "vite preview --host"
+    "build": "vite build && node tools/build-standalone.mjs",
+    "preview": "vite preview --host",
+    "standalone": "node tools/build-standalone.mjs"
   },
   "dependencies": {
     "pixi.js": "^8.22.0"
