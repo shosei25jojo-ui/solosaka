@@ -33,12 +33,13 @@ export const MATCH = {
 // 選手の移動性能
 export const MOVE = {
   jogSpeed: 5.6,      // 通常走 (m/s) ≒ 20 km/h
-  dashSpeed: 8.4,     // R1 ダッシュ ≒ 30 km/h
+  dashSpeed: 8.8,     // R1 ダッシュ ≒ 32 km/h
   controlSpeed: 3.3,  // R2 コントロールドリブル
-  accel: 7.0,         // 加速の強さ（速度が上がるほど減衰）
-  accelTopRef: 10.5,  // a = accel * (1 - v / accelTopRef)
-  brake: 9.0,         // 減速（制動）
-  coast: 6.0,         // 入力を離したときの減速
+  accel: 7.5,         // 加速の強さ（速度が上がるほど減衰）
+  accelTopRef: 11.0,  // a = accel * (1 - v / accelTopRef)
+  dashAccelBoost: 1.3, // ダッシュ中の加速倍率
+  brake: 11.0,        // 減速（制動）
+  coast: 8.5,         // 入力を離したときの減速
   stickDeadZone: 0.15,
 };
 

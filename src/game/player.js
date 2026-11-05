@@ -55,7 +55,7 @@ export class Player {
       const diff = angDiff(this.heading, want);
       const ad = Math.abs(diff);
       // 速いほど曲がりにくい（横方向の加速度には限界がある）
-      const omega = this.speed < 0.7 ? 13 : clamp(1.3 + 8.5 / this.speed, 2.0, 12);
+      const omega = this.speed < 0.7 ? 15 : clamp(1.8 + 11 / this.speed, 2.6, 14);
       // 大きな方向転換は一度ブレーキしてから切り返す
       if (ad > 1.75 && this.speed > 2.4) target = Math.min(target, 1.2);
       else if (ad > 0.45) target *= 1 - 0.4 * clamp((ad - 0.45) / 1.3, 0, 1);
@@ -64,7 +64,7 @@ export class Player {
     }
 
     if (target > this.speed) {
-      const a = MOVE.accel * (this.mode === 'dash' ? 1.08 : 1) * Math.max(0.15, 1 - this.speed / MOVE.accelTopRef);
+      const a = MOVE.accel * (this.mode === 'dash' ? MOVE.dashAccelBoost : 1) * Math.max(0.15, 1 - this.speed / MOVE.accelTopRef);
       this.speed = Math.min(target, this.speed + a * dt);
     } else {
       const d = mag > 0.05 ? MOVE.brake : MOVE.coast;

@@ -81,7 +81,8 @@ export class Locomotion {
     const r = smoothstep(1.7, 3.1, v);        // 歩き→走り
     const s = smoothstep(5.4, 8.4, v);        // ジョグ→スプリント
     const fWalk = 0.55 + 0.27 * Math.max(v, 0.9);
-    const fRun = 1.02 + 0.122 * v;
+    // ダッシュ域ではピッチ（回転数）を大きく上げる：8.8m/s で約 2.45 周/秒 ≒ 4.9 歩/秒
+    const fRun = 1.02 + 0.122 * v + 0.36 * s;
     const freq = lerp(fWalk, fRun, r) * (1 + 0.14 * ctrl);
     const duty = lerp(0.62, lerp(0.38, 0.26, s), r);
     const swingH = lerp(0.07 + 0.03 * Math.min(v, 1.5), 0.27 + 0.27 * s, r) * (1 - 0.35 * ctrl);
@@ -176,7 +177,7 @@ export class Locomotion {
     let cz = baseZ + bob;
 
     // 前傾・内傾（スプリング）
-    const leanT = g * (0.035 + 0.05 * r + 0.11 * s) + clamp(p.accelFwd * 0.032, -0.2, 0.26) + 0.1 * ctrl;
+    const leanT = g * (0.035 + 0.05 * r + 0.17 * s) + clamp(p.accelFwd * 0.032, -0.2, 0.26) + 0.1 * ctrl;
     this.lean += (leanT - this.lean) * (1 - Math.exp(-dt / 0.14));
     const sideT = clamp(Math.atan((v * p.turnRate) / 9.81) * 0.9, -0.38, 0.38);
     this.sideLean += (sideT - this.sideLean) * (1 - Math.exp(-dt / 0.1));
@@ -290,11 +291,12 @@ export class Locomotion {
     set(J.HEAD, nx + hux * hr + fx * 0.025, ny + huy * hr + fy * 0.025, nz + huz * hr);
 
     // ---- 腕 ----
-    const swingAmp = g * lerp(0.32, lerp(0.55, 0.85, s), r) * (1 - 0.45 * ctrl);
+    const swingAmp = g * lerp(0.3, lerp(0.48, 0.72, s), r) * (1 - 0.45 * ctrl);
     const flexBase = lerp(0.22 + 0.12 * g, lerp(1.32, 1.5, s), r);
     for (const sd of [-1, 1]) {
       const legF = sd < 0 ? lf : -lf;              // 同側の脚の前後
-      const swing = -legF;                          // 腕は反対
+      // 腕は脚と反対。ダッシュ時は中間を素早く振り抜く波形（鋭い腕振り）
+      const swing = -Math.sign(legF) * Math.pow(Math.abs(legF), 1 - 0.4 * s);
       const alpha = 0.06 + 0.06 * r + swingAmp * swing;
       const flex = clamp(flexBase + r * (0.3 * s + 0.12) * swing, 0.1, 2.0);
       const sh = sd < 0 ? J.L_SH : J.R_SH;
