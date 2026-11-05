@@ -1,0 +1,1335 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#05080d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>SOLOSAKA ストライド×ピッチ確認</title>
+  <style>
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  background: #05080d; overflow: hidden;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+  color: #fff;
+}
+#stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+#stage canvas { display: block; }
+#touch-layer { position: fixed; inset: 0; z-index: 5; display: none; }
+#touch-layer.on { display: block; }
+.stick-base {
+  position: absolute; width: 150px; height: 150px; margin: -75px 0 0 -75px;
+  border-radius: 50%; border: 2px solid rgba(255,255,255,.35);
+  background: radial-gradient(circle, rgba(255,255,255,.10), rgba(255,255,255,.03));
+  pointer-events: none; transition: opacity .15s; opacity: .55;
+}
+.stick-base.active { opacity: 1; transition: none; }
+.stick-knob {
+  position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px;
+  border-radius: 50%; background: rgba(255,255,255,.55); box-shadow: 0 2px 8px rgba(0,0,0,.4);
+}
+.touch-btn {
+  position: absolute; width: 104px; height: 104px; margin: -52px 0 0 -52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 18px; letter-spacing: .06em;
+  background: rgba(230, 60, 70, .35); border: 2px solid rgba(255,255,255,.45);
+  pointer-events: none;
+}
+.touch-btn.active { background: rgba(255, 80, 90, .75); transform: scale(.94); }
+#topbar { position: fixed; top: 8px; right: 10px; z-index: 10; display: flex; gap: 8px; }
+#topbar button {
+  font: 700 13px system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.45);
+  border: 1px solid rgba(255,255,255,.35); border-radius: 6px; padding: 7px 11px;
+}
+#topbar button.on { background: rgba(255, 200, 40, .8); color: #000; }
+#start {
+  position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 12px;
+  background: radial-gradient(ellipse at center, rgba(10,40,20,.92), rgba(2,6,4,.97));
+}
+#start.hidden { display: none; }
+#start .logo { font-size: 64px; font-weight: 900; letter-spacing: .12em; font-style: italic; }
+#start .sub { font-size: 16px; opacity: .8; }
+#start .tap { margin-top: 18px; font-size: 22px; font-weight: 700; animation: blink 1.2s infinite; }
+#start .hint { font-size: 12px; opacity: .6; max-width: 90%; text-align: center; }
+@keyframes blink { 50% { opacity: .35; } }
+#rotate {
+  position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center;
+  background: #05080d; font-size: 20px; font-weight: 700;
+}
+@media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }
+.touch-btn.small { font-size: 14px; background: rgba(60, 140, 230, .35); }
+.touch-btn.small.active { background: rgba(80, 160, 255, .75); }
+#tune {
+  position: fixed; top: 52px; right: 10px; z-index: 15; width: min(360px, 46vw);
+  background: rgba(8, 12, 18, .88); border: 1px solid rgba(255,255,255,.25); border-radius: 10px;
+  padding: 6px 12px; display: none; font-size: 12px;
+  max-height: calc(100vh - 190px); overflow-y: auto;
+}
+#tune.open { display: block; }
+#tune .row { margin: 4px 0 6px; }
+#tune label { display: flex; justify-content: space-between; margin-bottom: 4px; }
+#tune input[type=range] { width: 100%; height: 26px; margin: 0; accent-color: #f2c14e; }
+#tune .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+#tune button {
+  font: 700 12px system-ui, sans-serif; color: #fff; background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.3); border-radius: 6px; padding: 5px 8px;
+}
+#tune button.on { background: rgba(255, 200, 40, .8); color: #000; }
+
+  </style>
+  <script type="importmap">{"imports":{"pixi.js":"https://cdn.jsdelivr.net/npm/pixi.js@8.22.0/dist/pixi.min.mjs"}}</script>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="touch-layer"></div>
+  <div id="topbar">
+    <button id="btn-dbg" type="button" class="on">DBG</button>
+    <button id="btn-tune" type="button">TUNE</button>
+    <button id="btn-slow" type="button">SLOW</button>
+    <button id="btn-full" type="button">⛶</button>
+  </div>
+  <div id="start">
+    <div class="logo">SOLOSAKA</div>
+    <div class="sub">ストライド × ピッチ 走行テスト</div>
+    <div class="tap">タップしてスタート</div>
+    <div class="hint">スマホ：左側スライドで移動・右下 DASH / R2 ／ パッド：左スティック・R1 ダッシュ・R2 コントロール ／ TUNE で倍率調整</div>
+  </div>
+  <div id="rotate">端末を横向きにしてください</div>
+  <script type="module">
+import { CanvasSource as te, Texture as se, Container as Ht, Graphics as Et, PerspectiveMesh as ee, Text as Es, Application as ie } from "pixi.js";
+const Yt = 1280, ss = 720, ne = 60, Dt = 1 / ne, Is = 5, L = {
+  length: 105,
+  width: 68,
+  halfL: 52.5,
+  halfW: 34,
+  lineW: 0.12,
+  centerCircleR: 9.15,
+  penaltyDepth: 16.5,
+  penaltyHalfW: 20.16,
+  goalAreaDepth: 5.5,
+  goalAreaHalfW: 9.16,
+  penaltySpot: 11,
+  goalHalfW: 3.66,
+  goalH: 2.44,
+  goalDepth: 2
+}, oe = {
+  stickDeadZone: 0.15
+}, W = {
+  pitchDeg: 31,
+  // 見下ろし角
+  dist: 64,
+  // 注視点までの距離（望遠気味＝中継カメラ風のゆるいパース）
+  distSpeedGain: 0.5,
+  // 速度に応じて少し引く
+  viewWidthAtTarget: 27,
+  // 注視点での画面横幅 (m)。STEP 1 はモーション確認のため寄り気味
+  screenCx: Yt / 2,
+  screenCy: ss * 0.52,
+  follow: 3.2,
+  // 追従の速さ (1/s)
+  lookAhead: 0.55,
+  // 速度方向の先読み (s)
+  clampX: 40,
+  clampYMin: -21,
+  clampYMax: 22
+};
+if (typeof location < "u") {
+  const d = new URLSearchParams(location.search);
+  d.has("vw") && (W.viewWidthAtTarget = +d.get("vw")), d.has("pitch") && (W.pitchDeg = +d.get("pitch")), d.has("la") && (W.lookAhead = +d.get("la"), W.follow = 30);
+}
+const ae = Math.PI / 180;
+class he {
+  constructor() {
+    this.pitch = W.pitchDeg * ae, this.cosA = Math.cos(this.pitch), this.sinA = Math.sin(this.pitch), this.tx = 0, this.ty = 0, this.dist = W.dist, this.ptx = 0, this.pty = 0, this.pdist = W.dist, this.rx = 0, this.ry = 0, this.rdist = W.dist, this.cx = W.screenCx, this.cy = W.screenCy, this._updateDerived();
+  }
+  snap(t, s) {
+    this.tx = this.ptx = t, this.ty = this.pty = s, this.interpolate(1);
+  }
+  /** 固定ステップ: 追従対象（将来はボール）に向けて注視点を動かす */
+  step(t, s, e, i, a, c) {
+    this.ptx = this.tx, this.pty = this.ty, this.pdist = this.dist;
+    let n = t + e * W.lookAhead, o = s + i * W.lookAhead * 0.6;
+    n = Math.max(-40, Math.min(W.clampX, n)), o = Math.max(W.clampYMin, Math.min(W.clampYMax, o));
+    const h = 1 - Math.exp(-W.follow * c);
+    this.tx += (n - this.tx) * h, this.ty += (o - this.ty) * h;
+    const l = W.dist + a * W.distSpeedGain;
+    this.dist += (l - this.dist) * (1 - Math.exp(-1.2 * c));
+  }
+  interpolate(t) {
+    this.rx = this.ptx + (this.tx - this.ptx) * t, this.ry = this.pty + (this.ty - this.pty) * t, this.rdist = this.pdist + (this.dist - this.pdist) * t, this._updateDerived();
+  }
+  _updateDerived() {
+    this.focal = Yt * W.dist / W.viewWidthAtTarget, this.camX = this.rx, this.camY = this.ry + this.rdist * this.cosA, this.camZ = this.rdist * this.sinA;
+  }
+  /** カメラ方向の奥行き（大きいほど遠い） */
+  depth(t, s, e) {
+    return -(s - this.camY) * this.cosA - (e - this.camZ) * this.sinA;
+  }
+  /**
+   * ワールド→スクリーン。out = {x, y, s(px/m), d(depth)}
+   */
+  project(t, s, e, i) {
+    const a = t - this.camX, c = s - this.camY, n = e - this.camZ;
+    let o = -c * this.cosA - n * this.sinA;
+    o < 0.05 && (o = 0.05);
+    const h = -c * this.sinA + n * this.cosA, l = this.focal / o;
+    return i.x = this.cx + a * l, i.y = this.cy - h * l, i.s = l, i.d = o, i;
+  }
+}
+const H = { x0: -64, x1: 64, y0: -44, y1: 44 };
+function Ms(d, t = 8) {
+  const s = new te({
+    resource: d,
+    autoGenerateMipmaps: !0,
+    scaleMode: "linear",
+    mipmapFilter: "linear",
+    maxAnisotropy: t,
+    addressMode: "clamp-to-edge"
+  });
+  return new se({ source: s });
+}
+function Ys(d) {
+  let t = d >>> 0;
+  return () => (t = t * 1664525 + 1013904223 >>> 0, t / 4294967296);
+}
+function ce() {
+  const s = document.createElement("canvas");
+  s.width = 2048, s.height = 1024;
+  const e = s.getContext("2d"), i = 2048 / (H.x1 - H.x0), a = 1024 / (H.y1 - H.y0), c = () => e.setTransform(i, 0, 0, a, 64 * i, 44 * a);
+  c(), e.fillStyle = "#2e7d32", e.fillRect(H.x0, H.y0, H.x1 - H.x0, H.y1 - H.y0);
+  const n = L.length / 18;
+  for (let p = -12; p < 12; p++) {
+    const u = -52.5 + p * n;
+    e.fillStyle = p % 2 === 0 ? "#348a37" : "#2b742e", e.fillRect(u, H.y0, n, H.y1 - H.y0);
+  }
+  const o = L.width / 8;
+  for (let p = -6; p < 6; p++)
+    p % 2 !== 0 && (e.fillStyle = "rgba(255,255,255,0.025)", e.fillRect(H.x0, -34 + p * o, H.x1 - H.x0, o));
+  e.fillStyle = "rgba(0,0,0,0.10)", e.fillRect(H.x0, H.y0, H.x1 - H.x0, -34 - 1.5 - H.y0), e.fillRect(H.x0, L.halfW + 1.5, H.x1 - H.x0, H.y1 - L.halfW - 1.5), e.fillRect(H.x0, -34 - 1.5, -52.5 - 2 - H.x0, L.width + 3), e.fillRect(L.halfL + 2, -34 - 1.5, H.x1 - L.halfL - 2, L.width + 3), e.setTransform(1, 0, 0, 1, 0, 0);
+  const h = e.getImageData(0, 0, 2048, 1024), l = h.data, r = Ys(1234);
+  for (let p = 0; p < l.length; p += 4) {
+    const u = (r() - 0.5) * 18 + (r() < 0.04 ? -14 : 0);
+    l[p] = Math.max(0, Math.min(255, l[p] + u * 0.5)), l[p + 1] = Math.max(0, Math.min(255, l[p + 1] + u)), l[p + 2] = Math.max(0, Math.min(255, l[p + 2] + u * 0.4));
+  }
+  e.putImageData(h, 0, 0), c(), e.fillStyle = "rgba(120,100,60,0.18)";
+  for (const p of [-1, 1]) e.fillRect(p < 0 ? -52.5 - 2 : L.halfL, -3.66, 2, L.goalHalfW * 2);
+  e.fillStyle = "rgba(110,95,60,0.10)";
+  for (const p of [-1, 1]) e.fillRect(p < 0 ? -52.5 : L.halfL - 6, -3.66 - 1, 6, L.goalHalfW * 2 + 2);
+  return Ms(s, 16);
+}
+function _s(d = 7) {
+  const e = document.createElement("canvas");
+  e.width = 1024, e.height = 512;
+  const i = e.getContext("2d"), a = Ys(d), c = 22, n = 512 / c, o = ["#d62839", "#d62839", "#f2f2f2", "#f2f2f2", "#1b2a4a", "#2a2a2a", "#e8b04a", "#6b7a8f", "#a33", "#ddd"];
+  for (let h = 0; h < c; h++) {
+    const l = h * n;
+    i.fillStyle = h % 2 ? "#20262f" : "#262d37", i.fillRect(0, l, 1024, n), i.fillStyle = "rgba(0,0,0,0.35)", i.fillRect(0, l + n - 3, 1024, 3);
+    for (let r = 0; r < 1024; r += 9 + a() * 4) {
+      if (a() < 0.12) continue;
+      const p = o[a() * o.length | 0], u = r + a() * 3, C = l + n * 0.25 + a() * n * 0.2;
+      i.fillStyle = p, i.fillRect(u - 3, C + 5, 7, n * 0.45), i.fillStyle = a() < 0.5 ? "#e0b08a" : "#8a5a3c", i.beginPath(), i.arc(u + 0.5, C + 2, 3, 0, Math.PI * 2), i.fill();
+    }
+  }
+  i.fillStyle = "#3a404a";
+  for (let h = 120; h < 1024; h += 256) i.fillRect(h, 0, 10, 512);
+  return Ms(e, 4);
+}
+function re() {
+  const s = document.createElement("canvas");
+  s.width = 2048, s.height = 64;
+  const e = s.getContext("2d"), i = [
+    ["#0d1b2a", "#ffffff", "SOLOSAKA"],
+    ["#d62839", "#ffffff", "STEP 1"],
+    ["#f2c14e", "#111111", "SOLO FOOTBALL"],
+    ["#1b998b", "#ffffff", "PIXI × VITE"],
+    ["#ffffff", "#d62839", "SOLOSAKA"],
+    ["#2d3142", "#f2c14e", "60 HZ"],
+    ["#d62839", "#ffffff", "SOLOSAKA"],
+    ["#0d1b2a", "#1b998b", "KICK OFF"]
+  ], a = 2048 / i.length;
+  return i.forEach(([c, n, o], h) => {
+    e.fillStyle = c, e.fillRect(h * a, 0, a, 64), e.fillStyle = n, e.font = "italic 900 38px system-ui, sans-serif", e.textAlign = "center", e.textBaseline = "middle", e.fillText(o, h * a + a / 2, 64 / 2 + 2), e.fillStyle = "rgba(0,0,0,0.5)", e.fillRect(h * a, 0, 2, 64);
+  }), Ms(s, 8);
+}
+const Ct = [{ x: 0, y: 0, s: 1, d: 1 }, { x: 0, y: 0, s: 1, d: 1 }, { x: 0, y: 0, s: 1, d: 1 }, { x: 0, y: 0, s: 1, d: 1 }];
+class Bt {
+  constructor(t, s, e = 16) {
+    this.corners = s, this.mesh = new ee({ texture: t, verticesX: e, verticesY: e });
+  }
+  update(t) {
+    const s = this.corners;
+    for (let e = 0; e < 4; e++) t.project(s[e][0], s[e][1], s[e][2], Ct[e]);
+    this.mesh.setCorners(Ct[0].x, Ct[0].y, Ct[1].x, Ct[1].y, Ct[2].x, Ct[2].y, Ct[3].x, Ct[3].y);
+  }
+}
+class le {
+  constructor() {
+    this.container = new Ht();
+    const t = ce(), s = _s(7), e = _s(99), i = re(), { x0: a, x1: c, y0: n, y1: o } = H;
+    this.quads = [
+      // 地面
+      new Bt(t, [[a, n, 0], [c, n, 0], [c, o, 0], [a, o, 0]], 24),
+      // 奥スタンド（下段→上段へ傾斜）。テクスチャ上端=最上段
+      new Bt(s, [[-82, -66, 19], [82, -66, 19], [76, -39.5, 1.3], [-76, -39.5, 1.3]], 16),
+      // 左右ゴール裏スタンド
+      new Bt(e, [[-82, 60, 19], [-82, -66, 19], [-59.5, -39.5, 1.3], [-59.5, 42, 1.3]], 16),
+      new Bt(e, [[82, -66, 19], [82, 60, 19], [59.5, 42, 1.3], [59.5, -39.5, 1.3]], 16),
+      // 広告ボード（奥・左右）
+      new Bt(i, [[-58, -37.5, 0.95], [58, -37.5, 0.95], [58, -37.5, 0], [-58, -37.5, 0]], 12),
+      new Bt(i, [[-57.5, 38, 0.95], [-57.5, -37.5, 0.95], [-57.5, -37.5, 0], [-57.5, 38, 0]], 12),
+      new Bt(i, [[57.5, -37.5, 0.95], [57.5, 38, 0.95], [57.5, 38, 0], [57.5, -37.5, 0]], 12)
+    ], this.walls = new Et();
+    for (const h of this.quads) this.container.addChild(h.mesh);
+    this.container.addChildAt(this.walls, 1);
+  }
+  update(t) {
+    for (const e of this.quads) e.update(t);
+    const s = this.walls;
+    s.clear(), ms(s, t, [[-76, -39.5], [76, -39.5]], 1.3, 1711911), ms(s, t, [[-59.5, 42], [-59.5, -39.5]], 1.3, 1448738), ms(s, t, [[59.5, -39.5], [59.5, 42]], 1.3, 1448738);
+  }
+}
+const us = { x: 0, y: 0, s: 1, d: 1 }, ys = { x: 0, y: 0, s: 1, d: 1 }, xs = { x: 0, y: 0, s: 1, d: 1 }, gs = { x: 0, y: 0, s: 1, d: 1 };
+function ms(d, t, [[s, e], [i, a]], c, n) {
+  t.project(s, e, 0, us), t.project(i, a, 0, ys), t.project(i, a, c, xs), t.project(s, e, c, gs), d.poly([us.x, us.y, ys.x, ys.y, xs.x, xs.y, gs.x, gs.y]).fill(n);
+}
+class As {
+  constructor(t) {
+    this.side = t, this.g = new Et(), this.x = t * L.halfL, this.p = [];
+    for (let s = 0; s < 8; s++) this.p.push({ x: 0, y: 0, s: 1, d: 1 });
+  }
+  update(t) {
+    const s = this.g;
+    s.clear();
+    const e = this.x, i = e + this.side * L.goalDepth, a = L.goalHalfW, c = L.goalH, n = 1.9, o = (I, _, D, Y) => t.project(I, _, D, Y), [h, l, r, p, u, C, x, g] = this.p;
+    o(e, -a, 0, h), o(e, -a, c, l), o(e, a, 0, r), o(e, a, c, p), o(i, -a, 0, u), o(i, -a, n, C), o(i, a, 0, x), o(i, a, n, g), this.g.zIndex = -t.depth(e + this.side * 1, 0, 1);
+    const S = 15265522, E = Math.max(0.6, h.s * 0.02), m = 14, v = 6, M = { x: 0, y: 0, s: 1, d: 1 }, P = { x: 0, y: 0, s: 1, d: 1 };
+    for (let I = 0; I <= m; I++) {
+      const _ = -a + 2 * a * I / m;
+      o(i, _, 0, M), o(i, _, n, P), s.moveTo(M.x, M.y).lineTo(P.x, P.y), o(e, _, c, M), s.moveTo(M.x, M.y).lineTo(P.x, P.y);
+    }
+    for (let I = 0; I <= v; I++) {
+      const _ = I / v;
+      o(i, -a, n * _, M), o(i, a, n * _, P), s.moveTo(M.x, M.y).lineTo(P.x, P.y);
+      for (const D of [-a, a])
+        o(e, D, c * _, M), o(i, D, n * _, P), s.moveTo(M.x, M.y).lineTo(P.x, P.y);
+    }
+    for (let I = 1; I < 4; I++) {
+      const _ = e + (i - e) * (I / 4), D = c + (n - c) * (I / 4);
+      for (const Y of [-a, a])
+        o(_, Y, 0, M), o(_, Y, D, P), s.moveTo(M.x, M.y).lineTo(P.x, P.y);
+      o(_, -a, D, M), o(_, a, D, P), s.moveTo(M.x, M.y).lineTo(P.x, P.y);
+    }
+    s.stroke({ width: E, color: S, alpha: 0.45 }), s.moveTo(u.x, u.y).lineTo(C.x, C.y).lineTo(g.x, g.y).lineTo(x.x, x.y), s.moveTo(l.x, l.y).lineTo(C.x, C.y), s.moveTo(p.x, p.y).lineTo(g.x, g.y), s.stroke({ width: Math.max(1, h.s * 0.05), color: 12568268, alpha: 0.9 }), s.moveTo(h.x, h.y).lineTo(l.x, l.y).lineTo(p.x, p.y).lineTo(r.x, r.y), s.stroke({ width: Math.max(1.5, h.s * 0.12), color: 16777215, cap: "round", join: "round" });
+  }
+}
+class de {
+  constructor() {
+    this.g = new Et(), this.polylines = pe(), this.spots = [[0, 0, 0.16], [-52.5 + L.penaltySpot, 0, 0.14], [L.halfL - L.penaltySpot, 0, 0.14]], this.a = { x: 0, y: 0, s: 1, d: 1 }, this.b = { x: 0, y: 0, s: 1, d: 1 }, this.c = { x: 0, y: 0, s: 1, d: 1 }, this.e = { x: 0, y: 0, s: 1, d: 1 };
+  }
+  update(t) {
+    const s = this.g;
+    s.clear();
+    const e = L.lineW / 2 + 0.01, { a: i, b: a, c, e: n } = this;
+    for (const o of this.polylines)
+      for (let h = 0; h + 3 < o.length; h += 2) {
+        let l = o[h], r = o[h + 1], p = o[h + 2], u = o[h + 3];
+        const C = p - l, x = u - r, g = Math.hypot(C, x);
+        if (g < 1e-6) continue;
+        const S = C / g, E = x / g;
+        l -= S * e, r -= E * e, p += S * e, u += E * e;
+        const m = -E * e, v = S * e;
+        t.project(l + m, r + v, 0, i), t.project(p + m, u + v, 0, a), t.project(p - m, u - v, 0, c), t.project(l - m, r - v, 0, n), s.poly([i.x, i.y, a.x, a.y, c.x, c.y, n.x, n.y]);
+      }
+    for (const [o, h, l] of this.spots) {
+      const r = [];
+      for (let p = 0; p < 12; p++) {
+        const u = p / 12 * Math.PI * 2;
+        t.project(o + Math.cos(u) * l, h + Math.sin(u) * l, 0, i), r.push(i.x, i.y);
+      }
+      s.poly(r);
+    }
+    s.fill({ color: 16120048, alpha: 0.92 });
+  }
+}
+function pe() {
+  const d = L.halfL, t = L.halfW, s = [], e = (i, a, c, n, o, h) => {
+    const l = [];
+    for (let r = 0; r <= h; r++) {
+      const p = n + (o - n) * r / h;
+      l.push(i + Math.cos(p) * c, a + Math.sin(p) * c);
+    }
+    return l;
+  };
+  s.push([-d, -t, d, -t], [d, -t, d, t], [d, t, -d, t], [-d, t, -d, -t]), s.push([0, -t, 0, t]), s.push(e(0, 0, L.centerCircleR, 0, Math.PI * 2, 72));
+  for (const i of [-1, 1]) {
+    const a = i * d, c = a - i * L.penaltyDepth, n = L.penaltyHalfW;
+    s.push([a, -n, c, -n, c, n, a, n]);
+    const o = a - i * L.goalAreaDepth, h = L.goalAreaHalfW;
+    s.push([a, -h, o, -h, o, h, a, h]);
+    const l = a - i * L.penaltySpot, r = Math.acos((L.penaltyDepth - L.penaltySpot) / L.centerCircleR);
+    s.push(i < 0 ? e(l, 0, L.centerCircleR, -r, r, 24) : e(l, 0, L.centerCircleR, Math.PI - r, Math.PI + r, 24));
+    for (const p of [-1, 1]) {
+      const u = i < 0 ? p < 0 ? 0 : -Math.PI / 2 : p < 0 ? Math.PI / 2 : Math.PI;
+      s.push(e(a, p * t, 1, u, u + Math.PI / 2, 6));
+    }
+  }
+  return s;
+}
+const y = {
+  PELVIS: 0,
+  CHEST: 1,
+  NECK: 2,
+  HEAD: 3,
+  L_SH: 4,
+  L_EL: 5,
+  L_HA: 6,
+  R_SH: 7,
+  R_EL: 8,
+  R_HA: 9,
+  L_HIP: 10,
+  L_KN: 11,
+  L_AN: 12,
+  L_TO: 13,
+  R_HIP: 14,
+  R_KN: 15,
+  R_AN: 16,
+  R_TO: 17,
+  L_WA: 18,
+  R_WA: 19,
+  // 腰（胴体シルエット用）
+  L_HE: 20,
+  R_HE: 21
+  // かかと
+}, Ot = 22, w = {
+  thigh: 0.45,
+  shin: 0.435,
+  ankleH: 0.075,
+  foot: 0.215,
+  heel: 0.055,
+  upperArm: 0.295,
+  foreArm: 0.27,
+  shoulderHalf: 0.165,
+  hipHalf: 0.092,
+  waistHalf: 0.125,
+  spine: 0.5,
+  // 股関節中心 → 肩ライン
+  neck: 0.085,
+  headR: 0.112,
+  standHipZ: 0.935
+};
+function Tt(d, t) {
+  const s = Math.min(255, (d >> 16 & 255) * t) | 0, e = Math.min(255, (d >> 8 & 255) * t) | 0, i = Math.min(255, (d & 255) * t) | 0;
+  return s << 16 | e << 8 | i;
+}
+class Rs {
+  constructor(t, s) {
+    this.player = t, this.view = new Ht(), this.g = new Et(), this.view.addChild(this.g), this.shadow = new Et(), s.addChild(this.shadow), this.pts = [];
+    for (let e = 0; e < Ot; e++) this.pts.push({ x: 0, y: 0, s: 1, d: 1 });
+    this.world = new Float32Array(Ot * 3), this.tmp = { x: 0, y: 0, s: 1, d: 1 };
+  }
+  draw(t, s) {
+    const e = this.player, i = e.loco, a = i.prevJoints, c = i.joints, n = this.world;
+    for (let K = 0; K < n.length; K++) n[K] = a[K] + (c[K] - a[K]) * s;
+    const o = this.pts;
+    for (let K = 0; K < Ot; K++) t.project(n[K * 3], n[K * 3 + 1], n[K * 3 + 2], o[K]);
+    const h = e.px + (e.x - e.px) * s, l = e.py + (e.y - e.py) * s;
+    this.view.zIndex = -t.depth(h, l, 0), this._drawShadow(t, n);
+    const r = this.g;
+    r.clear();
+    const p = e.kit, u = o[y.PELVIS].s, C = o[y.L_HIP].d > o[y.R_HIP].d, x = o[y.L_SH].d > o[y.R_SH].d, g = C ? "L" : "R", S = C ? "R" : "L", E = x ? "L" : "R", m = x ? "R" : "L";
+    this._arm(r, E, u, p, 0.82), this._leg(r, g, u, p, 0.82), this._leg(r, S, u, p, 1);
+    const v = o[y.L_WA], M = o[y.R_WA], P = o[y.L_HIP], I = o[y.R_HIP], _ = o[y.PELVIS], D = o[y.L_KN], Y = o[y.R_KN], Pt = P.x + (D.x - P.x) * 0.22, B = P.y + (D.y - P.y) * 0.22, It = I.x + (Y.x - I.x) * 0.22, N = I.y + (Y.y - I.y) * 0.22;
+    r.poly([v.x, v.y, M.x, M.y, It, N, _.x, _.y + u * 0.03, Pt, B]).fill(p.shorts).stroke({ width: u * 0.13, color: p.shorts, join: "round" });
+    const U = o[y.L_SH], Z = o[y.R_SH];
+    o[y.CHEST];
+    const R = this.tmp, A = n[y.CHEST * 3] - n[y.PELVIS * 3], O = n[y.CHEST * 3 + 1] - n[y.PELVIS * 3 + 1], $ = n[y.CHEST * 3 + 2] - n[y.PELVIS * 3 + 2];
+    t.project(n[y.PELVIS * 3] + A * 0.3, n[y.PELVIS * 3 + 1] + O * 0.3, n[y.PELVIS * 3 + 2] + $ * 0.3, R);
+    const X = R.x, Nt = R.y;
+    t.project(n[y.PELVIS * 3] + A * 0.86, n[y.PELVIS * 3 + 1] + O * 0.86, n[y.PELVIS * 3 + 2] + $ * 0.86, R), st(r, { x: X, y: Nt }, R, u * 0.105, u * 0.125, p.shirt), r.poly([U.x, U.y, Z.x, Z.y, M.x, M.y, v.x, v.y]).fill(p.shirt).stroke({ width: u * 0.12, color: p.shirt, join: "round" });
+    const Xt = x ? U : Z, _t = x ? v : M;
+    r.moveTo(Xt.x, Xt.y).lineTo(_t.x, _t.y).stroke({ width: u * 0.07, color: Tt(p.shirt, 0.78), cap: "round" }), r.moveTo(v.x, v.y).lineTo(M.x, M.y).stroke({ width: u * 0.05, color: Tt(p.shirt, 0.85), cap: "round" });
+    const et = o[y.CHEST], kt = o[y.NECK], qt = o[y.HEAD];
+    st(r, et, kt, u * 0.05, u * 0.045, p.skin), r.moveTo(U.x + (et.x - U.x) * 0.55, U.y + (et.y - U.y) * 0.55).lineTo(Z.x + (et.x - Z.x) * 0.55, Z.y + (et.y - Z.y) * 0.55).stroke({ width: u * 0.035, color: p.trim, cap: "round" }), this._head(r, t, n, qt, u, p), this._arm(r, m, u, p, 1);
+  }
+  _leg(t, s, e, i, a) {
+    const c = this.pts, n = c[y[s + "_HIP"]], o = c[y[s + "_KN"]], h = c[y[s + "_AN"]], l = c[y[s + "_TO"]], r = c[y[s + "_HE"]], p = Tt(i.skin, a), u = Tt(i.socks, a), C = Tt(i.shorts, a), x = Tt(i.boots, a);
+    st(t, n, o, e * 0.083, e * 0.056, p);
+    const g = n.x + (o.x - n.x) * 0.42, S = n.y + (o.y - n.y) * 0.42;
+    st(t, n, { x: g, y: S }, e * 0.095, e * 0.078, C), st(t, o, h, e * 0.05, e * 0.034, p);
+    const E = (M) => ({ x: o.x + (h.x - o.x) * M, y: o.y + (h.y - o.y) * M }), m = E(0.13), v = E(0.34);
+    st(t, m, v, e * 0.053, e * 0.058, u), st(t, v, h, e * 0.058, e * 0.035, u), st(t, r, l, e * 0.04, e * 0.032, x), st(t, h, { x: (h.x + l.x) * 0.5, y: (h.y + l.y) * 0.5 }, e * 0.036, e * 0.035, x), t.moveTo(r.x, r.y).lineTo((r.x + l.x) * 0.5, (r.y + l.y) * 0.5).stroke({ width: e * 0.012, color: Tt(i.bootAccent, a), cap: "round" });
+  }
+  _arm(t, s, e, i, a) {
+    const c = this.pts, n = c[y[s + "_SH"]], o = c[y[s + "_EL"]], h = c[y[s + "_HA"]], l = Tt(i.skin, a), r = Tt(i.shirt, a);
+    st(t, n, o, e * 0.047, e * 0.039, l), st(t, o, h, e * 0.038, e * 0.029, l), t.circle(h.x, h.y, e * 0.042).fill(l);
+    const p = n.x + (o.x - n.x) * 0.5, u = n.y + (o.y - n.y) * 0.5;
+    st(t, n, { x: p, y: u }, e * 0.068, e * 0.055, r);
+  }
+  _head(t, s, e, i, a, c) {
+    const n = this.player, o = Math.cos(n.heading), h = Math.sin(n.heading), l = e[y.HEAD * 3], r = e[y.HEAD * 3 + 1], p = e[y.HEAD * 3 + 2], u = this.tmp;
+    s.project(l + o * 0.03, r + h * 0.03, p - 0.012, u);
+    const C = u.x, x = u.y, g = u.d;
+    s.project(l - o * 0.022, r - h * 0.022, p + 0.025, u);
+    const S = u.x, E = u.y, m = a * w.headR;
+    g < i.d ? (t.circle(S, E, m * 1).fill(c.hair), t.circle(C, x, m * 0.94).fill(c.skin), t.circle(S + (i.x - S) * 0.2, E - m * 0.35, m * 0.72).fill(c.hair), t.circle(C, x + m * 0.15, m * 0.7).fill(c.skin)) : (t.circle(C, x, m * 0.94).fill(c.skin), t.circle(S, E, m * 1).fill(c.hair));
+  }
+  _drawShadow(t, s) {
+    const e = this.shadow;
+    e.clear();
+    const i = this.tmp, a = s[y.PELVIS * 3], c = s[y.PELVIS * 3 + 1], n = a + 0.12, o = c + 0.08, h = [];
+    for (let l = 0; l < 14; l++) {
+      const r = l / 14 * Math.PI * 2, p = Math.cos(r) * 0.5, u = Math.sin(r) * 0.28, C = p * 0.85 - u * 0.5, x = p * 0.5 + u * 0.85;
+      t.project(n + C, o + x, 0, i), h.push(i.x, i.y);
+    }
+    e.poly(h).fill({ color: 0, alpha: 0.26 });
+    for (const l of [y.L_AN, y.R_AN]) {
+      const r = s[l * 3 + 2], p = Math.max(0, 0.3 - r * 0.6);
+      p <= 0.01 || (t.project(s[l * 3] + 0.05, s[l * 3 + 1] + 0.03, 0, i), e.ellipse(i.x, i.y, i.s * 0.16, i.s * 0.07).fill({ color: 0, alpha: p }));
+    }
+  }
+}
+function st(d, t, s, e, i, a) {
+  const c = s.x - t.x, n = s.y - t.y, o = Math.hypot(c, n);
+  if (d.circle(t.x, t.y, e), d.circle(s.x, s.y, i), o > 0.5) {
+    const h = -n / o, l = c / o;
+    d.poly([t.x + h * e, t.y + l * e, s.x + h * i, s.y + l * i, s.x - h * i, s.y - l * i, t.x - h * e, t.y - l * e]);
+  }
+  d.fill(a);
+}
+const Kt = Math.PI * 2, ft = (d, t, s) => d < t ? t : d > s ? s : d, z = (d, t, s) => d + (t - d) * s, $t = (d) => d * d * (3 - 2 * d), zt = (d, t, s) => $t(ft((s - d) / (t - d), 0, 1)), ws = (d) => d - Math.floor(d), Ds = (d, t) => {
+  let s = t - d;
+  for (; s > Math.PI; ) s -= Kt;
+  for (; s < -Math.PI; ) s += Kt;
+  return s;
+};
+function Bs(d) {
+  return {
+    side: d,
+    // -1 = 左, +1 = 右
+    stance: !0,
+    pos: [0, 0, w.ankleH],
+    // 足首のワールド位置
+    dir: 0,
+    // 足の向き
+    lift: [0, 0, w.ankleH],
+    liftRel: [0, 0],
+    liftDir: 0,
+    liftDuty: 0.5,
+    prevPi: 0,
+    s: 0,
+    // 遊脚の進行度 0..1
+    pitch: 0.2,
+    // つま先の下向き角
+    heelRise: 0
+  };
+}
+class fe {
+  constructor() {
+    this.phase = 0, this.legs = [Bs(-1), Bs(1)], this.lean = 0, this.sideLean = 0, this.activity = 0, this.time = 0, this.joints = new Float32Array(Ot * 3), this.prevJoints = new Float32Array(Ot * 3), this.gait = { r: 0, s: 0, freq: 0, duty: 0.6 }, this.duty = 0.36, this.onContact = null;
+  }
+  reset(t) {
+    const s = Math.cos(t.heading), i = -Math.sin(t.heading), a = s;
+    for (const c of this.legs)
+      c.stance = !0, c.pos[0] = t.x + i * c.side * 0.11, c.pos[1] = t.y + a * c.side * 0.11, c.pos[2] = w.ankleH, c.dir = t.heading;
+    this.update(t, 1 / 60, 0), this.prevJoints.set(this.joints);
+  }
+  /** @param dist この固定ステップで体が進んだ距離 (m) */
+  update(t, s, e = 0) {
+    this.prevJoints.set(this.joints), this.time += s;
+    const i = t.speed, a = t.heading, c = Math.cos(a), n = Math.sin(a), o = -n, h = c, l = t.gait, r = t.mode === "control" || t.mode === "pressNear" ? 1 : 0, p = l ? l.stride : 0, u = l ? l.profile.baseStride : 1.7, C = p / u, x = zt(1.7, 3.1, i), g = zt(1.06, 1.34, C) * zt(4.5, 6.5, i), S = l && l.cadence > 0.1 && i > 0.2 ? l.cadence / 2 : 0.8, E = z(0.62, l ? l.duty : 0.36, x);
+    this.duty += (E - this.duty) * (1 - Math.exp(-s * 10));
+    const m = this.duty, v = ft(p / 1.7, 0.45, 1.25), M = z(0.07 + 0.03 * Math.min(i, 1.5), (0.22 + 0.22 * g) * v, x) * (1 - 0.3 * r), P = l ? l.crouch : 0, I = z(0.105, z(0.06, 0.045, g), x);
+    this.gait.r = x, this.gait.s = g, this.gait.freq = S, this.gait.duty = m;
+    let _ = 0;
+    for (const f of this.legs) {
+      if (!f.stance) continue;
+      const k = t.x + o * f.side * 0.11, j = t.y + h * f.side * 0.11, T = Math.hypot(f.pos[0] - k, f.pos[1] - j) + Math.abs(Ds(f.dir, a)) * 0.12;
+      T > _ && (_ = T);
+    }
+    const D = !this.legs[0].stance || !this.legs[1].stance;
+    i > 0.22 && p > 0.15 ? this.phase = ws(this.phase + e / (2 * p)) : (D || _ > 0.13) && (this.phase = ws(this.phase + S * s));
+    const Pt = zt(0.15, 1.2, i);
+    this.activity += (Pt - this.activity) * (1 - Math.exp(-s * 8));
+    const B = this.activity, It = m / S;
+    for (const f of this.legs) {
+      const k = ws(this.phase + (f.side > 0 ? 0.5 : 0)), j = k < f.prevPi - 0.5;
+      if (f.stance && k >= m && !j ? (f.stance = !1, f.lift[0] = f.pos[0], f.lift[1] = f.pos[1], f.lift[2] = f.pos[2], f.liftDir = f.dir, f.liftDuty = m, f.liftRel[0] = f.pos[0] - t.x, f.liftRel[1] = f.pos[1] - t.y, f.liftPitch = f.pitch) : !f.stance && j && (f.stance = !0, f.pos[2] = w.ankleH, f.heelRise = 0, this.onContact && this.onContact(f.side, f.pos)), f.prevPi = k, f.stance) {
+        const T = ft(k / Math.max(m, 0.01), 0, 1), ot = zt(0.5, 1, T) * z(0.035, 0.13, x) * B;
+        f.heelRise = ot, f.pos[2] = w.ankleH + ot, f.pitch = Math.asin(ft((f.pos[2] - 0.028) / w.foot, -0.5, 0.99)), x < 0.5 && (f.pitch -= (1 - x * 2) * 0.28 * (1 - zt(0, 0.25, T)) * B), f.s = 0;
+      } else {
+        const T = ft((k - f.liftDuty) / Math.max(1 - f.liftDuty, 0.05), 0, 1);
+        f.s = T;
+        const ot = 0.36 * It, wt = t.vx * ot + o * f.side * I, bt = t.vy * ot + h * f.side * I, lt = z($t(T), 0.55 * T + 0.45 * $t(T), x);
+        let dt = f.liftRel[0] + (wt - f.liftRel[0]) * lt, at = f.liftRel[1] + (bt - f.liftRel[1]) * lt;
+        const ht = x * 0.09 * (0.5 + 0.5 * g) * Math.sin(Math.PI * ft((T - 0.55) / 0.45, 0, 1));
+        dt += c * ht, at += n * ht, f.pos[0] = t.x + dt, f.pos[1] = t.y + at;
+        const pt = z(1, 0.62, x), F = Math.sin(Math.PI * Math.pow(T, pt));
+        f.pos[2] = z(f.lift[2], w.ankleH, $t(T)) + M * F, f.dir = f.liftDir + Ds(f.liftDir, a + f.side * 0.07) * $t(T);
+        const G = z(-0.12, 0.18, x), Mt = z(0.35, 0.95 + 0.15 * g, x);
+        f.pitch = T < 0.25 ? z(f.liftPitch ?? 0.4, Mt, $t(T / 0.25)) : z(Mt, G, zt(0.25, 0.95, T));
+      }
+    }
+    const N = Math.cos(Kt * (this.phase - (m / 2 - 0.25))), U = Math.cos(2 * Kt * (this.phase - m / 2)), Z = z(0.016, -0.034 - 0.012 * g, x) * U * B, R = z(w.standHipZ, z(0.905, 0.885, g), x) - 0.035 * r - 0.07 * P + Math.sin(this.time * 1.7) * 3e-3 * (1 - B), A = z(0.022, 8e-3, x) * Math.cos(Kt * (this.phase - m / 2)) * B;
+    let O = t.x - o * A, $ = t.y - h * A, X = R + Z;
+    const Nt = B * (0.035 + 0.05 * x + 0.17 * g) + ft(t.accelFwd * 0.032, -0.2, 0.26) + 0.1 * r + 0.05 * P;
+    this.lean += (Nt - this.lean) * (1 - Math.exp(-s / 0.14));
+    const Xt = ft(Math.atan(i * t.turnRate / 9.81) * 0.9, -0.38, 0.38);
+    this.sideLean += (Xt - this.sideLean) * (1 - Math.exp(-s / 0.1)), O += o * Math.sin(this.sideLean) * 0.12, $ += h * Math.sin(this.sideLean) * 0.12;
+    const _t = B * z(0.022, 0.034, x), et = this.legs, kt = [
+      [O - o * w.hipHalf + c * _t * N, $ - h * w.hipHalf + n * _t * N],
+      [O + o * w.hipHalf - c * _t * N, $ + h * w.hipHalf - n * _t * N]
+    ], qt = (w.thigh + w.shin) * 0.992;
+    for (let f = 0; f < 2; f++) {
+      if (!et[f].stance) continue;
+      const k = Math.hypot(et[f].pos[0] - kt[f][0], et[f].pos[1] - kt[f][1]), j = et[f].pos[2] + Math.sqrt(Math.max(0.01, qt * qt - k * k));
+      X > j && (X = j);
+    }
+    const K = Math.sin(this.sideLean) * w.hipHalf * 0.8, ut = this.joints, q = (f, k, j, T) => {
+      ut[f * 3] = k, ut[f * 3 + 1] = j, ut[f * 3 + 2] = T;
+    };
+    q(y.PELVIS, O, $, X), q(y.L_HIP, kt[0][0], kt[0][1], X + K), q(y.R_HIP, kt[1][0], kt[1][1], X - K);
+    for (let f = 0; f < 2; f++) {
+      const k = et[f], j = f === 0 ? y.L_HIP : y.R_HIP, T = ut[j * 3], ot = ut[j * 3 + 1], wt = ut[j * 3 + 2];
+      let bt = k.pos[0], lt = k.pos[1], dt = k.pos[2], at = bt - T, ht = lt - ot, pt = dt - wt, F = Math.hypot(at, ht, pt);
+      const G = (w.thigh + w.shin) * 0.999;
+      if (F > G) {
+        const fs = G / F;
+        at *= fs, ht *= fs, pt *= fs, F = G, bt = T + at, lt = ot + ht, dt = wt + pt;
+      }
+      F = Math.max(F, 0.12);
+      const Mt = at / F, Wt = ht / F, jt = pt / F, tt = (w.thigh * w.thigh - w.shin * w.shin + F * F) / (2 * F), Rt = Math.sqrt(Math.max(0, w.thigh * w.thigh - tt * tt));
+      let vt = c + o * k.side * 0.12, St = n + h * k.side * 0.12, Lt = 0;
+      const ds = vt * Mt + St * Wt + Lt * jt;
+      vt -= Mt * ds, St -= Wt * ds, Lt -= jt * ds;
+      const ps = Math.hypot(vt, St, Lt) || 1;
+      vt /= ps, St /= ps, Lt /= ps;
+      const Us = f === 0 ? y.L_KN : y.R_KN;
+      q(Us, T + Mt * tt + vt * Rt, ot + Wt * tt + St * Rt, wt + jt * tt + Lt * Rt);
+      const Zs = f === 0 ? y.L_AN : y.R_AN;
+      q(Zs, bt, lt, dt);
+      const Ps = Math.cos(k.dir), ks = Math.sin(k.dir), Zt = Math.cos(k.pitch), Hs = Math.sin(k.pitch), Js = f === 0 ? y.L_TO : y.R_TO;
+      q(Js, bt + Ps * Zt * w.foot, lt + ks * Zt * w.foot, Math.max(0.02, dt - Hs * w.foot));
+      const Qs = f === 0 ? y.L_HE : y.R_HE;
+      q(Qs, bt - Ps * Zt * w.heel, lt - ks * Zt * w.heel, Math.max(0.02, dt - 0.045 + Hs * w.heel));
+    }
+    const Os = Math.cos(this.lean), vs = Math.sin(this.lean), Ks = Math.cos(this.sideLean), Ss = Math.sin(this.sideLean);
+    let J = c * vs + o * Ss, Q = n * vs + h * Ss, it = Os * Ks;
+    const es = Math.hypot(J, Q, it);
+    J /= es, Q /= es, it /= es;
+    let yt = c, xt = n, gt = 0, nt = yt * J + xt * Q + gt * it;
+    yt -= J * nt, xt -= Q * nt, gt -= it * nt;
+    let At = Math.hypot(yt, xt, gt);
+    yt /= At, xt /= At, gt /= At;
+    let ct = o, rt = h, mt = 0;
+    nt = ct * J + rt * Q, ct -= J * nt, rt -= Q * nt, mt -= it * nt, nt = ct * yt + rt * xt + mt * gt, ct -= yt * nt, rt -= xt * nt, mt -= gt * nt, At = Math.hypot(ct, rt, mt), ct /= At, rt /= At, mt /= At;
+    const Xs = Math.sin(this.time * 1.7) * 4e-3 * (1 - B), is = w.spine - 0.015 * x + Xs, ns = O + J * is, os = $ + Q * is, as = X + it * is;
+    q(y.CHEST, ns, os, as);
+    const qs = B * z(0.026, 0.045 + 0.02 * g, x);
+    for (const f of [-1, 1]) {
+      const k = -f * -qs * N, j = f < 0 ? y.L_SH : y.R_SH;
+      q(
+        j,
+        ns + ct * f * w.shoulderHalf + yt * k - J * 0.02,
+        os + rt * f * w.shoulderHalf + xt * k - Q * 0.02,
+        as + mt * f * w.shoulderHalf + gt * k - it * 0.02
+      );
+      const T = f < 0 ? y.L_WA : y.R_WA;
+      q(
+        T,
+        O + J * 0.16 + ct * f * w.waistHalf,
+        $ + Q * 0.16 + rt * f * w.waistHalf,
+        X + it * 0.16 + mt * f * w.waistHalf
+      );
+    }
+    const hs = this.lean * 0.35, cs = this.sideLean * 0.4;
+    let Gt = c * Math.sin(hs) + o * Math.sin(cs), Vt = n * Math.sin(hs) + h * Math.sin(cs), Ut = Math.cos(hs) * Math.cos(cs);
+    const rs = Math.hypot(Gt, Vt, Ut);
+    Gt /= rs, Vt /= rs, Ut /= rs;
+    const Ls = ns + J * 0.03, Cs = os + Q * 0.03, Ts = as + it * 0.03;
+    q(y.NECK, Ls + Gt * w.neck, Cs + Vt * w.neck, Ts + Ut * w.neck);
+    const ls = w.neck + w.headR * 0.95;
+    q(y.HEAD, Ls + Gt * ls + c * 0.025, Cs + Vt * ls + n * 0.025, Ts + Ut * ls);
+    const Gs = B * z(0.3, z(0.48, 0.72, g), x) * (1 - 0.45 * r) * ft(0.6 + 0.4 * v, 0.6, 1.1), Vs = z(0.22 + 0.12 * B, z(1.32, 1.5, g), x);
+    for (const f of [-1, 1]) {
+      const k = f < 0 ? N : -N, j = -Math.sign(k) * Math.pow(Math.abs(k), 1 - 0.4 * g), T = 0.06 + 0.06 * x + Gs * j, ot = ft(Vs + x * (0.3 * g + 0.12) * j, 0.1, 2), wt = f < 0 ? y.L_SH : y.R_SH, bt = ut[wt * 3], lt = ut[wt * 3 + 1], dt = ut[wt * 3 + 2], at = 0.13 + 0.06 * x;
+      let ht = -J * Math.cos(T) + yt * Math.sin(T) + ct * f * Math.sin(at), pt = -Q * Math.cos(T) + xt * Math.sin(T) + rt * f * Math.sin(at), F = -it * Math.cos(T) + gt * Math.sin(T) + mt * f * Math.sin(at), G = Math.hypot(ht, pt, F);
+      ht /= G, pt /= G, F /= G;
+      const Mt = bt + ht * w.upperArm, Wt = lt + pt * w.upperArm, jt = dt + F * w.upperArm;
+      q(f < 0 ? y.L_EL : y.R_EL, Mt, Wt, jt);
+      const tt = Math.min(T + ot, 2.35), Rt = 0.1 + 0.22 * x;
+      let vt = -J * Math.cos(tt) + yt * Math.sin(tt) - ct * f * Rt, St = -Q * Math.cos(tt) + xt * Math.sin(tt) - rt * f * Rt, Lt = -it * Math.cos(tt) + gt * Math.sin(tt) - mt * f * Rt;
+      G = Math.hypot(vt, St, Lt), vt /= G, St /= G, Lt /= G, q(f < 0 ? y.L_HA : y.R_HA, Mt + vt * w.foreArm, Wt + St * w.foreArm, jt + Lt * w.foreArm);
+    }
+  }
+}
+const zs = Math.PI * 2, Ft = (d, t, s) => d < t ? t : d > s ? s : d, Jt = (d, t, s) => d + (t - d) * s, ue = (d) => (d = Ft(d, 0, 1), d * d * (3 - 2 * d)), bs = (d, t) => {
+  let s = t - d;
+  for (; s > Math.PI; ) s -= zs;
+  for (; s < -Math.PI; ) s += zs;
+  return s;
+}, b = {
+  // 全選手共通の倍率（スマホの TUNE パネルのスライダーで変更）
+  global: { strideMul: 1, cadenceMul: 1 },
+  // 選手ごとの基準値の既定（能力値が無いときに使う）
+  // baseStride: 通常走行の 1 歩 (m)、baseCadence: 通常走行の歩数/秒 → 1.70 × 3.30 ≒ 5.6 m/s
+  profileDefaults: {
+    baseStride: 1.7,
+    baseCadence: 3.3,
+    strideGrowPerStep: 0.14,
+    // 加速: 1 歩で伸ばせるストライド (m)
+    turnPerStep: 0.95,
+    // 敏捷性: 基準ストライドのとき 1 歩で曲がれる角度 (rad)
+    touchControl: 1
+    // ドリブル: タッチの正確さ（将来用）
+  },
+  // 状態ごとの倍率（基準値に掛ける）。duty = 1 サイクル中の接地時間の割合（見た目用）
+  states: {
+    jog: { stride: 0.74, cadence: 0.86, duty: 0.4, label: "JOG" },
+    run: { stride: 1, cadence: 1, duty: 0.34, label: "RUN" },
+    dash: { stride: 1.38, cadence: 1.1, duty: 0.27, label: "DASH" },
+    control: { stride: 0.55, cadence: 1.2, duty: 0.4, label: "R2 CONTROL" },
+    dribble: { stride: 0.9, cadence: 1, duty: 0.35, label: "DRIBBLE" },
+    dashDribble: { stride: 1.24, cadence: 1.08, duty: 0.28, label: "DASH DRIBBLE" },
+    pressFar: { stride: 1.2, cadence: 1.04, duty: 0.3, label: "PRESS (FAR)" },
+    pressNear: { stride: 0.4, cadence: 1.28, duty: 0.42, label: "PRESS (NEAR)" }
+  },
+  // スティックを少しだけ倒したときの歩き（倒し量 0..walkBelow で縮める）
+  walk: { walkBelow: 0.35, strideMin: 0.45, cadenceMin: 0.6 },
+  // ジョグ→通常走行のブレンド（スティック倒し量）
+  jogToRun: { from: 0.45, to: 0.9 },
+  // 走り出し: 最初の数歩は短く速い歩幅 → 伸ばしてトップスピードへ
+  startup: {
+    strideCurve: [0.4, 0.56, 0.72, 0.87],
+    // baseStride に対する上限
+    cadenceCurve: [1.24, 1.17, 1.1, 1.04],
+    // その歩のピッチ倍率
+    growPerStep: 0.36,
+    // 走り出し中のストライドの伸び (m/歩)
+    resetSpeed: 0.9
+    // これ以下に落ちたら次は「走り出し」から
+  },
+  // 減速・方向転換
+  brake: {
+    shrinkPerSec: 3.2,
+    // ストライドを縮める速さ (m/s)
+    turnShrink: 0.62,
+    // 最大の切り返しで次の 1 歩をここまで詰める (1 - 0.62 = 38%)
+    crouchBrake: 0.8,
+    // 減速で重心を下げる量（0..1 → locomotion で約 7cm）
+    crouchTurn: 1,
+    // 切り返しで重心を下げる量
+    crouchRecover: 4,
+    // 重心が戻る速さ (1/s)
+    stopStride: 0.28
+    // これ以下で入力なしなら停止
+  },
+  // 方向転換：1 歩で曲がれる角度 = turnPerStep × (refStride / ストライド)^exp
+  turn: { refStride: 1, exp: 1.15, min: 0.12, max: 1.9, pivotRate: 11, pivotSpeed: 0.9 },
+  // 守備の寄せ（間合いに入ったら小刻みに）
+  press: { closeDist: 3, hysteresis: 0.3, holdDist: 1.6, approachDecel: 4.5 },
+  // approachDecel: 間合いへ詰めるときの減速度 (m/s²)
+  // ドリブル: タッチは接地イベントで行う
+  dribble: {
+    touchEvery: { control: 1, dribble: 2, dashDribble: 4, run: 2, jog: 2, dash: 4 },
+    // 何歩ごとに触るか
+    // 次のタッチの瞬間に体の何 m 前にボールが来るよう押し出すか（＝その時の足の届く位置）。
+    // 押し出す距離 = 速度 × (touchEvery ÷ ピッチ) + lead → ダッシュは数歩ぶん大きく前へ出る
+    lead: { control: 0.42, dribble: 0.7, dashDribble: 1.35, run: 0.7, jog: 0.6, dash: 1.35 },
+    reach: 1.25,
+    // 接地足（の少し前）からこの距離以内ならタッチできる
+    pickup: 0.75,
+    // ルーズボールを拾える距離
+    pickupRelSpeed: 9,
+    // 拾える相対速度 (m/s)
+    accelTouchEvery: 2,
+    // 加速中のタッチ間隔の上限（走り出しの数歩は毎歩）
+    redirectTurn: 0.25,
+    // この角度(rad)以上曲がる歩はボールの向きを変えるタッチを入れる
+    loseDist: 3.6
+    // これ以上離れたら保持を失う
+  }
+};
+function Ns(d = {}) {
+  const t = b.profileDefaults, s = (e) => ((d[e] ?? 70) - 70) / 30;
+  return {
+    baseStride: t.baseStride * (1 + 0.06 * s("speed")),
+    baseCadence: t.baseCadence * (1 + 0.04 * s("speed") + 0.03 * s("agility")),
+    strideGrowPerStep: t.strideGrowPerStep * (1 + 0.35 * s("acceleration")),
+    turnPerStep: t.turnPerStep * (1 + 0.25 * s("agility") + 0.1 * s("balance")),
+    touchControl: t.touchControl * (1 + 0.3 * s("dribbling"))
+  };
+}
+class ye {
+  constructor(t = Ns()) {
+    this.profile = t, this.stride = 0, this.cadence = t.baseCadence, this.strideCmd = 0, this.cadenceCmd = t.baseCadence, this.state = "jog", this.stepsSinceStart = 99, this.stepCount = 0, this.headingTarget = null, this.turnRateCmd = 0, this.crouch = 0, this.lastContact = "-", this.duty = 0.36, this.moving = !1;
+  }
+  /** 状態と入力から、この歩の目標値（倍率反映済み）を返す */
+  _targets(t) {
+    const s = b.states[this.state], e = this.profile, i = b.global;
+    let a = s.stride, c = s.cadence;
+    if (this.state === "jog" || this.state === "run") {
+      const r = b.states.jog, p = b.states.run, u = ue((t.mag - b.jogToRun.from) / (b.jogToRun.to - b.jogToRun.from));
+      a = Jt(r.stride, p.stride, u), c = Jt(r.cadence, p.cadence, u);
+    }
+    if (this.state === "pressFar" || this.state === "pressNear") a *= Math.max(0.25, t.mag);
+    else if (t.mag < b.walk.walkBelow) {
+      const r = t.mag / b.walk.walkBelow;
+      a *= Jt(b.walk.strideMin, 1, r), c *= Jt(b.walk.cadenceMin, 1, r);
+    }
+    let n = e.baseStride * a * i.strideMul, o = e.baseCadence * c * i.cadenceMul;
+    const h = this.stepsSinceStart, l = b.startup;
+    return h < l.strideCurve.length && (n = Math.min(n, e.baseStride * l.strideCurve[h] * i.strideMul), o *= l.cadenceCurve[h]), [n, o];
+  }
+  /** 状態のトップ速度（倍率反映・走り出し補正なし） */
+  fullSpeed(t) {
+    const s = b.states[t];
+    return this.profile.baseStride * s.stride * b.global.strideMul * this.profile.baseCadence * s.cadence * b.global.cadenceMul;
+  }
+  /**
+   * 状態の決定
+   * @param ctx {mag, hasBall, dash, control, press: null|'far'|'near'}
+   */
+  _pickState(t) {
+    return t.press ? t.press === "near" ? "pressNear" : "pressFar" : t.control ? "control" : t.dash ? t.hasBall ? "dashDribble" : "dash" : t.hasBall ? "dribble" : t.mag < (b.jogToRun.from + b.jogToRun.to) / 2 ? "jog" : "run";
+  }
+  /** 毎ステップ: 連続的な追従（ストライド・ピッチ・向き） */
+  update(t, s, e) {
+    this.state = this._pickState(s), this.duty = b.states[this.state].duty;
+    const i = s.mag > 0.05 ? Math.atan2(s.iy, s.ix) : null, a = this.stride * this.cadence;
+    if (a < b.turn.pivotSpeed) {
+      const n = i ?? s.face;
+      if (n != null) {
+        const o = bs(t.heading, n);
+        t.heading += Ft(o, -b.turn.pivotRate * e, b.turn.pivotRate * e);
+      }
+      this.headingTarget = null;
+    } else if (this.headingTarget != null) {
+      const n = bs(t.heading, this.headingTarget), o = 1 / Math.max(this.cadence, 0.5), h = Math.max(Math.abs(n) / (o * 0.5), 0.5);
+      t.heading += Ft(n, -h * e, h * e);
+    }
+    if (t.heading = Math.atan2(Math.sin(t.heading), Math.cos(t.heading)), s.mag > 0.05) {
+      const [n, o] = this._targets(s);
+      if (this.strideCmd = Math.min(this.strideCmd || n, n), this.cadenceCmd = o, !this.moving) {
+        this.moving = !0, this.stepsSinceStart >= b.startup.strideCurve.length && a < b.startup.resetSpeed && (this.stepsSinceStart = 0);
+        const [h, l] = this._targets(s);
+        this.strideCmd = h, this.cadenceCmd = l, this.stride < 0.3 && (this.stride = 0.3, this.cadence = l);
+      }
+    } else
+      this.strideCmd = 0, this.cadenceCmd = this.profile.baseCadence * 0.75;
+    const c = this.strideCmd - this.stride;
+    if (c > 0) {
+      const n = this.stepsSinceStart < b.startup.strideCurve.length ? b.startup.growPerStep : this.profile.strideGrowPerStep;
+      this.stride += Math.min(c, n * this.cadence * e);
+    } else
+      this.stride += Math.max(c, -b.brake.shrinkPerSec * e), s.mag > 0.05 && c < -0.05 && (this.crouch = Math.min(1, this.crouch + b.brake.crouchBrake * 4 * e));
+    return this.cadence += (this.cadenceCmd - this.cadence) * (1 - Math.exp(-e / 0.12)), s.mag <= 0.05 && this.stride < b.brake.stopStride && (this.stride = 0, this.moving = !1), this.stride * this.cadence < b.startup.resetSpeed && s.mag <= 0.05 && (this.stepsSinceStart = 99), this.crouch = Math.max(0, this.crouch - b.brake.crouchRecover * e * 0.5), this._want = i, this._ctx = s, this.stride * this.cadence;
+  }
+  /** 接地イベント: 向き・次の歩の目標を決める */
+  onContact(t, s) {
+    this.lastContact = s < 0 ? "L" : "R", this.stepCount++, this.moving && (this.stepsSinceStart = Math.min(this.stepsSinceStart + 1, 99));
+    const e = this._ctx;
+    if (!e || e.mag <= 0.05) return;
+    const [i, a] = this._targets(e);
+    this.strideCmd = i, this.cadenceCmd = a;
+    const c = this._want;
+    if (c == null) return;
+    const n = b.turn, o = Ft(this.profile.turnPerStep * Math.pow(n.refStride / Math.max(this.stride, 0.3), n.exp), n.min, n.max), h = bs(t.heading, c), l = Ft(h, -o, o);
+    this.headingTarget = t.heading + l;
+    const r = Ft((Math.abs(h) - o * 0.6) / (Math.PI * 0.65), 0, 1);
+    r > 0 && (this.strideCmd *= 1 - b.brake.turnShrink * r, this.crouch = Math.min(1, this.crouch + b.brake.crouchTurn * r));
+  }
+}
+const Ws = Math.PI * 2, js = (d, t, s) => d < t ? t : d > s ? s : d, xe = (d, t) => {
+  let s = t - d;
+  for (; s > Math.PI; ) s -= Ws;
+  for (; s < -Math.PI; ) s += Ws;
+  return s;
+};
+class $s {
+  constructor({ x: t = 0, y: s = 0, heading: e = 0, kit: i, abilities: a, name: c = "" }) {
+    this.name = c, this.x = t, this.y = s, this.px = t, this.py = s, this.vx = 0, this.vy = 0, this.speed = 0, this.heading = e, this.turnRate = 0, this.accelFwd = 0, this.mode = "jog", this.kit = i, this.hasBall = !1, this.gait = new ye(Ns(a)), this.contactListeners = [], this.loco = new fe(), this.loco.onContact = (n, o) => {
+      this.gait.onContact(this, n);
+      for (const h of this.contactListeners) h(this, n, o);
+    }, this.loco.reset(this);
+  }
+  /** 接地イベントの購読 fn(player, side(-1 左 / +1 右), footPos[x,y,z]) */
+  onContact(t) {
+    this.contactListeners.push(t);
+  }
+  /** 状態（足の接地位置など）を保ったまま平行移動 */
+  teleport(t, s) {
+    const e = t - this.x, i = s - this.y;
+    this.x = t, this.y = s, this.px += e, this.py += i;
+    for (const a of this.loco.legs)
+      a.pos[0] += e, a.pos[1] += i, a.lift[0] += e, a.lift[1] += i;
+    for (const a of [this.loco.joints, this.loco.prevJoints])
+      for (let c = 0; c < a.length; c += 3)
+        a[c] += e, a[c + 1] += i;
+  }
+  /**
+   * @param {{moveX:number, moveY:number, dash:boolean, control:boolean, press?:null|'far'|'near', faceX?:number, faceY?:number}} input
+   */
+  step(t, s) {
+    this.px = this.x, this.py = this.y;
+    const e = t.moveX, i = t.moveY, a = Math.min(1, Math.hypot(e, i)), c = this.heading, n = this.speed, o = t.faceX != null ? Math.atan2(t.faceY - this.y, t.faceX - this.x) : null, h = this.gait;
+    this.speed = h.update(this, {
+      ix: e,
+      iy: i,
+      mag: a,
+      dash: !!t.dash,
+      control: !!t.control,
+      hasBall: this.hasBall,
+      press: t.press ?? null,
+      face: o
+    }, s), this.mode = h.state, this.vx = Math.cos(this.heading) * this.speed, this.vy = Math.sin(this.heading) * this.speed, this.x += this.vx * s, this.y += this.vy * s;
+    const l = L.halfL + 4, r = L.halfW + 3;
+    (this.x < -l || this.x > l) && (this.x = js(this.x, -l, l), h.stride *= 0.5), (this.y < -r || this.y > r) && (this.y = js(this.y, -r, r), h.stride *= 0.5);
+    const p = xe(c, this.heading) / s;
+    this.turnRate += (p - this.turnRate) * (1 - Math.exp(-s * 12));
+    const u = (this.speed - n) / s;
+    this.accelFwd += (u - this.accelFwd) * (1 - Math.exp(-s * 10)), this.loco.update(this, s, Math.hypot(this.x - this.px, this.y - this.py));
+  }
+}
+const Qt = ["shortPass", "longPass", "shoot", "throughPass", "switchCursor", "dash", "control"], ge = { shortPass: 0, longPass: 1, shoot: 2, throughPass: 3, switchCursor: 4, dash: 5, control: 7 }, me = {
+  shortPass: ["KeyJ"],
+  longPass: ["KeyL"],
+  shoot: ["KeyK"],
+  throughPass: ["KeyI"],
+  switchCursor: ["KeyQ"],
+  dash: ["ShiftLeft", "ShiftRight"],
+  control: ["KeyE", "ControlLeft"]
+};
+function Fs(d, t, s) {
+  const e = Math.hypot(d, t);
+  if (e < s) return [0, 0];
+  const i = Math.min(1, (e - s) / (1 - s)) / e;
+  return [d * i, t * i];
+}
+class we {
+  constructor() {
+    this.keys = /* @__PURE__ */ new Set(), this.touch = { moveX: 0, moveY: 0, dash: !1, control: !1, active: !1 }, this.state = {
+      moveX: 0,
+      moveY: 0,
+      rightX: 0,
+      rightY: 0,
+      dash: !1,
+      control: !1
+    }, this.pressed = {}, this.justPressed = {};
+    for (const t of Qt)
+      this.pressed[t] = !1, this.justPressed[t] = !1;
+    this.source = "keyboard", this.padName = "", window.addEventListener("keydown", (t) => {
+      this.keys.add(t.code), this.source = "keyboard", (t.code.startsWith("Arrow") || t.code === "Space") && t.preventDefault();
+    }), window.addEventListener("keyup", (t) => this.keys.delete(t.code)), window.addEventListener("blur", () => this.keys.clear());
+  }
+  /** 固定ステップごとに呼ぶ */
+  poll() {
+    const t = this.keys;
+    let s = 0, e = 0;
+    (t.has("KeyA") || t.has("ArrowLeft")) && (s -= 1), (t.has("KeyD") || t.has("ArrowRight")) && (s += 1), (t.has("KeyW") || t.has("ArrowUp")) && (e -= 1), (t.has("KeyS") || t.has("ArrowDown")) && (e += 1);
+    const i = Math.hypot(s, e);
+    i > 0 && (s /= i, e /= i);
+    let a = 0, c = 0;
+    const n = {};
+    for (const r of Qt) n[r] = me[r].some((p) => t.has(p));
+    const o = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const r of o) {
+      if (!r || !r.connected) continue;
+      const [p, u] = Fs(r.axes[0] || 0, r.axes[1] || 0, oe.stickDeadZone), [C, x] = Fs(r.axes[2] || 0, r.axes[3] || 0, 0.3);
+      let g = !1;
+      (p || u) && (s = p, e = u, g = !0), (C || x) && (a = C, c = x, g = !0);
+      const S = r.buttons;
+      if (S[12]?.pressed || S[13]?.pressed || S[14]?.pressed || S[15]?.pressed) {
+        let E = (S[15]?.pressed ? 1 : 0) - (S[14]?.pressed ? 1 : 0), m = (S[13]?.pressed ? 1 : 0) - (S[12]?.pressed ? 1 : 0);
+        const v = Math.hypot(E, m) || 1;
+        s = E / v, e = m / v, g = !0;
+      }
+      for (const E of Qt) {
+        const m = S[ge[E]];
+        if (!m) continue;
+        const v = m.pressed || m.value > 0.3;
+        v && (g = !0), n[E] = n[E] || v;
+      }
+      g && (this.source = "gamepad", this.padName = r.id);
+      break;
+    }
+    const h = this.touch;
+    (h.active || h.dash || h.control) && (this.source = "touch"), (h.moveX || h.moveY) && (s = h.moveX, e = h.moveY), h.dash && (n.dash = !0), h.control && (n.control = !0), this.override && (s = this.override.moveX ?? s, e = this.override.moveY ?? e, n.dash = this.override.dash ?? n.dash, n.control = this.override.control ?? n.control);
+    for (const r of Qt)
+      this.justPressed[r] = n[r] && !this.pressed[r], this.pressed[r] = n[r];
+    const l = this.state;
+    return l.moveX = s, l.moveY = e, l.rightX = a, l.rightY = c, l.dash = n.dash, l.control = n.control, l;
+  }
+}
+class be {
+  constructor(t) {
+    this.input = t, this.layer = document.getElementById("touch-layer"), this.base = ts("div", "stick-base"), this.knob = ts("div", "stick-knob"), this.base.appendChild(this.knob), this.dashBtn = ts("div", "touch-btn"), this.dashBtn.textContent = "DASH", this.ctrlBtn = ts("div", "touch-btn small"), this.ctrlBtn.textContent = "R2", this.layer.append(this.base, this.dashBtn, this.ctrlBtn), this.stickId = null, this.dashId = null, this.ctrlId = null, this.origin = { x: 0, y: 0 }, this.layout(), window.addEventListener("resize", () => this.layout());
+    const s = () => this.enable();
+    (matchMedia("(pointer: coarse)").matches || "ontouchstart" in window) && this.enable(), window.addEventListener("touchstart", s, { once: !0, passive: !0 });
+    const e = this.layer;
+    e.addEventListener("pointerdown", (i) => this.down(i)), e.addEventListener("pointermove", (i) => this.move(i)), e.addEventListener("pointerup", (i) => this.up(i)), e.addEventListener("pointercancel", (i) => this.up(i)), e.addEventListener("contextmenu", (i) => i.preventDefault());
+  }
+  enable() {
+    this.layer.classList.add("on");
+  }
+  layout() {
+    const t = window.innerWidth, s = window.innerHeight;
+    this.size = Math.max(110, Math.min(170, s * 0.36)), this.radius = this.size * 0.42, this.base.style.width = this.base.style.height = this.size + "px", this.base.style.margin = `${-this.size / 2}px 0 0 ${-this.size / 2}px`, this.home = { x: Math.max(this.size * 0.75, t * 0.12), y: s - this.size * 0.78 };
+    const e = Math.max(84, Math.min(120, s * 0.24));
+    this.dashBtn.style.width = this.dashBtn.style.height = e + "px", this.dashBtn.style.margin = `${-e / 2}px 0 0 ${-e / 2}px`, this.dashPos = { x: t - Math.max(e * 0.9, t * 0.1), y: s - e * 0.95, r: e * 0.75 }, this.dashBtn.style.left = this.dashPos.x + "px", this.dashBtn.style.top = this.dashPos.y + "px";
+    const i = e * 0.72;
+    this.ctrlBtn.style.width = this.ctrlBtn.style.height = i + "px", this.ctrlBtn.style.margin = `${-i / 2}px 0 0 ${-i / 2}px`, this.ctrlPos = { x: this.dashPos.x - e * 1.15, y: this.dashPos.y + e * 0.12, r: i * 0.6 }, this.ctrlBtn.style.left = this.ctrlPos.x + "px", this.ctrlBtn.style.top = this.ctrlPos.y + "px", this.stickId === null && this.placeBase(this.home.x, this.home.y);
+  }
+  placeBase(t, s) {
+    this.origin.x = t, this.origin.y = s, this.base.style.left = t + "px", this.base.style.top = s + "px", this.knob.style.transform = "translate(0px, 0px)";
+  }
+  down(t) {
+    t.preventDefault();
+    const s = t.clientX, e = t.clientY, i = this.dashPos, a = this.ctrlPos;
+    if (Math.hypot(s - a.x, e - a.y) < a.r * 1.2)
+      this.ctrlId === null && (this.ctrlId = t.pointerId, this.input.touch.control = !0, this.ctrlBtn.classList.add("active"));
+    else if (Math.hypot(s - i.x, e - i.y) < i.r * 1.25 || s > window.innerWidth * 0.6 && e > window.innerHeight * 0.45)
+      this.dashId === null && (this.dashId = t.pointerId, this.input.touch.dash = !0, this.dashBtn.classList.add("active"));
+    else if (s < window.innerWidth * 0.55 && this.stickId === null) {
+      this.stickId = t.pointerId;
+      const c = this.size / 2;
+      this.placeBase(Math.max(c, s), Math.min(window.innerHeight - c, Math.max(c, e))), this.base.classList.add("active"), this.input.touch.active = !0, this.move(t);
+    }
+    try {
+      this.layer.setPointerCapture(t.pointerId);
+    } catch {
+    }
+  }
+  move(t) {
+    if (t.pointerId !== this.stickId) return;
+    let s = t.clientX - this.origin.x, e = t.clientY - this.origin.y;
+    const i = Math.hypot(s, e), a = this.radius;
+    if (i > a * 1.6) {
+      const r = (i - a * 1.6) / i;
+      this.placeBase(this.origin.x + s * r, this.origin.y + e * r), s = t.clientX - this.origin.x, e = t.clientY - this.origin.y;
+    }
+    const c = Math.hypot(s, e), n = Math.min(c, a), o = c > 0 ? s / c * n : 0, h = c > 0 ? e / c * n : 0;
+    this.knob.style.transform = `translate(${o}px, ${h}px)`;
+    let l = n / a;
+    l = l < 0.1 ? 0 : Math.min(1, (l - 0.1) / 0.8), this.input.touch.moveX = c > 0 ? s / c * l : 0, this.input.touch.moveY = c > 0 ? e / c * l : 0;
+  }
+  up(t) {
+    t.pointerId === this.stickId && (this.stickId = null, this.input.touch.moveX = this.input.touch.moveY = 0, this.input.touch.active = !1, this.base.classList.remove("active"), this.placeBase(this.home.x, this.home.y)), t.pointerId === this.ctrlId && (this.ctrlId = null, this.input.touch.control = !1, this.ctrlBtn.classList.remove("active")), t.pointerId === this.dashId && (this.dashId = null, this.input.touch.dash = !1, this.dashBtn.classList.remove("active"));
+  }
+}
+function ts(d, t) {
+  const s = document.createElement(d);
+  return s.className = t, s;
+}
+class Me {
+  constructor() {
+    this.view = new Ht(), this.bg = new Et(), this.title = new Es({ text: "SOLOSAKA", style: { fill: 16777215, fontSize: 15, fontWeight: "900", fontStyle: "italic", letterSpacing: 1 } }), this.title.position.set(22, 16), this.info = new Es({ text: "", style: { fill: 14674144, fontSize: 13, fontFamily: "monospace", lineHeight: 17 } }), this.info.position.set(22, 38), this.view.addChild(this.bg, this.title, this.info), this.fps = 60, this.acc = 0, this.debug = !0, this._lastH = 0;
+  }
+  update(t, s, e, i, a = {}) {
+    if (t > 0 && (this.fps += (1 / t - this.fps) * 0.05), this.acc += t, this.acc < 0.1) return;
+    this.acc = 0;
+    const c = e.source === "gamepad" ? "PAD" : e.source === "touch" ? "TOUCH" : "KEY", n = s.gait, o = b.states[n.state]?.label ?? n.state, h = (s.speed * 3.6).toFixed(1).padStart(5);
+    let l = [`${h} km/h  ${o}`, `${c.padEnd(5)}  ${Math.round(this.fps)}fps${i < 1 ? "  SLOW x" + i : ""}`];
+    if (this.debug) {
+      const u = n.stepsSinceStart < b.startup.strideCurve.length ? `  START ${n.stepsSinceStart + 1}歩目` : "";
+      l = [
+        `STATE   ${o}${u}`,
+        `STRIDE  ${n.stride.toFixed(2)} m   (目標 ${n.strideCmd.toFixed(2)})`,
+        `PITCH   ${n.cadence.toFixed(2)} 歩/s (目標 ${n.cadenceCmd.toFixed(2)})`,
+        `SPEED   ${s.speed.toFixed(2)} m/s = ${h.trim()} km/h`,
+        `PHASE   ${s.loco.phase.toFixed(3)}   接地 ${n.lastContact}  #${n.stepCount}`,
+        `CROUCH  ${n.crouch.toFixed(2)}   x${b.global.strideMul.toFixed(2)} / x${b.global.cadenceMul.toFixed(2)}`,
+        ...a.lines || [],
+        `${c}  ${Math.round(this.fps)}fps${i < 1 ? "  SLOW x" + i : ""}`
+      ];
+    }
+    this.info.text = l.join(`
+`);
+    const r = 38 + l.length * 17 + 8, p = this.debug ? 330 : 236;
+    (r !== this._lastH || p !== this._lastW) && (this.bg.clear().roundRect(12, 10, p, r, 8).fill({ color: 0, alpha: 0.5 }), this._lastH = r, this._lastW = p);
+  }
+}
+class ve {
+  constructor({ onToggle: t } = {}) {
+    this.onToggle = t || (() => {
+    });
+    const s = document.createElement("div");
+    s.id = "tune", s.innerHTML = `
+      <div class="row"><label>ストライド倍率 <b id="tv-s">1.00</b></label>
+        <input id="tr-s" type="range" min="0.5" max="1.6" step="0.01" value="1"></div>
+      <div class="row"><label>ピッチ倍率 <b id="tv-c">1.00</b></label>
+        <input id="tr-c" type="range" min="0.5" max="1.6" step="0.01" value="1"></div>
+      <div class="row btns">
+        <button id="tb-reset" type="button">倍率リセット</button>
+        <button id="tb-ball" type="button" class="on">ボール</button>
+        <button id="tb-def" type="button" class="on">守備役</button>
+        <button id="tb-dbg" type="button" class="on">DEBUG表示</button>
+      </div>`, document.body.appendChild(s), this.el = s;
+    const e = s.querySelector("#tr-s"), i = s.querySelector("#tr-c"), a = s.querySelector("#tv-s"), c = s.querySelector("#tv-c"), n = () => {
+      b.global.strideMul = +e.value, b.global.cadenceMul = +i.value, a.textContent = (+e.value).toFixed(2), c.textContent = (+i.value).toFixed(2);
+    };
+    e.addEventListener("input", n), i.addEventListener("input", n), s.querySelector("#tb-reset").addEventListener("click", () => {
+      e.value = 1, i.value = 1, n();
+    });
+    for (const [o, h] of [["#tb-ball", "ball"], ["#tb-def", "defender"], ["#tb-dbg", "debug"]]) {
+      const l = s.querySelector(o);
+      l.addEventListener("click", () => {
+        l.classList.toggle("on"), this.onToggle(h, l.classList.contains("on"));
+      });
+    }
+    for (const o of ["pointerdown", "pointermove", "pointerup", "touchstart"]) s.addEventListener(o, (h) => h.stopPropagation());
+  }
+  toggle() {
+    return this.el.classList.toggle("open"), this.el.classList.contains("open");
+  }
+}
+const V = {
+  radius: 0.11,
+  rollDecel: 2.2,
+  // 芝の転がり抵抗 (m/s²)
+  gravity: 9.81,
+  bounce: 0.5
+};
+class Se {
+  constructor(t = 0, s = 0) {
+    this.x = t, this.y = s, this.z = V.radius, this.px = t, this.py = s, this.pz = this.z, this.vx = 0, this.vy = 0, this.vz = 0, this.owner = null, this.spin = 0;
+  }
+  step(t) {
+    this.px = this.x, this.py = this.y, this.pz = this.z, (this.z > V.radius + 1e-3 || this.vz > 0) && (this.vz -= V.gravity * t, this.z += this.vz * t, this.z < V.radius && (this.z = V.radius, this.vz = -this.vz * V.bounce, Math.abs(this.vz) < 0.6 && (this.vz = 0)));
+    const s = Math.hypot(this.vx, this.vy);
+    if (s > 0 && this.z <= V.radius + 0.02) {
+      const a = Math.max(0, s - V.rollDecel * t);
+      this.vx *= a / s, this.vy *= a / s;
+    }
+    this.x += this.vx * t, this.y += this.vy * t, this.spin += Math.hypot(this.vx, this.vy) / V.radius * t;
+    const e = L.halfL + 4.5, i = L.halfW + 3.4;
+    Math.abs(this.x) > e && (this.x = Math.sign(this.x) * e, this.vx *= -0.3), Math.abs(this.y) > i && (this.y = Math.sign(this.y) * i, this.vy *= -0.3);
+  }
+  get speed() {
+    return Math.hypot(this.vx, this.vy);
+  }
+}
+class Le {
+  constructor(t) {
+    this.ball = t, this.stepsSinceTouch = 0, this.touches = 0, this.lastTouchState = "-";
+  }
+  attach(t) {
+    t.onContact((s, e, i) => this.onContact(s, e, i));
+  }
+  _key(t) {
+    return b.dribble.touchEvery[t] != null ? t : "dribble";
+  }
+  /** 毎ステップ: 拾う / 失う の判定 */
+  update(t) {
+    const s = this.ball, e = b.dribble;
+    if (s.owner) {
+      const i = s.owner, a = Math.hypot(s.x - i.x, s.y - i.y);
+      a > e.loseDist ? this._release() : i.speed < 0.3 && a < 1 && (s.vx *= 0.85, s.vy *= 0.85);
+    } else
+      for (const i of t) {
+        if (!i.canDribble) continue;
+        const a = Math.hypot(s.x - i.x, s.y - i.y), c = Math.hypot(s.vx - i.vx, s.vy - i.vy);
+        if (a < e.pickup && c < e.pickupRelSpeed && s.z < 0.5) {
+          s.owner = i, i.hasBall = !0, this.stepsSinceTouch = 99;
+          break;
+        }
+      }
+  }
+  _release() {
+    this.ball.owner && (this.ball.owner.hasBall = !1), this.ball.owner = null;
+  }
+  onContact(t, s, e) {
+    const i = this.ball;
+    if (i.owner !== t) return;
+    const a = b.dribble, c = this._key(t.mode), n = t.gait, o = n.strideCmd * n.cadenceCmd > t.speed * 1.15;
+    let h = a.touchEvery[c];
+    if (n.stepsSinceStart < b.startup.strideCurve.length ? h = 1 : o && (h = Math.min(h, a.accelTouchEvery)), (n.headingTarget != null ? Math.abs(Math.atan2(Math.sin(n.headingTarget - t.heading), Math.cos(n.headingTarget - t.heading))) : 0) > a.redirectTurn && (h = 1), this.stepsSinceTouch++, this.stepsSinceTouch < h) return;
+    const r = Math.cos(t.heading), p = Math.sin(t.heading), u = e[0] + r * 0.25, C = e[1] + p * 0.25;
+    if (Math.hypot(i.x - u, i.y - C) > a.reach) return;
+    const x = Math.max(n.cadence, 1), g = h / x, S = (t.speed + Math.min(n.strideCmd * n.cadenceCmd, t.speed + 4 * g)) / 2, E = n.headingTarget ?? t.heading, m = Math.cos(E), v = Math.sin(E), M = S < 0.5 ? 0.35 : a.lead[c], P = t.x + m * (S * g + M), I = t.y + v * (S * g + M), _ = P - i.x, D = I - i.y, Y = Math.hypot(_, D);
+    if (Y < 1e-3) return;
+    const Pt = V.rollDecel;
+    let B = (Y + 0.5 * Pt * g * g) / g;
+    B = Math.min(B, 16), i.vx = _ / Y * B, i.vy = D / Y * B, i.vz = c === "dashDribble" || c === "dash" ? 0.8 : 0, this.stepsSinceTouch = 0, this.touches++, this.lastTouchState = c;
+  }
+}
+class Ce {
+  constructor(t) {
+    this.player = t, this.near = !1, this.input = { moveX: 0, moveY: 0, dash: !1, control: !1, press: "far", faceX: null, faceY: null };
+  }
+  think(t, s) {
+    const e = this.player, i = b.press, a = t - e.x, c = s - e.y, n = Math.hypot(a, c);
+    this.near ? n > i.closeDist + i.hysteresis && (this.near = !1) : n < i.closeDist - i.hysteresis && (this.near = !0);
+    const o = this.input;
+    o.press = this.near ? "near" : "far", o.faceX = t, o.faceY = s;
+    const h = n - i.holdDist;
+    if (h > 0.15) {
+      const l = Math.sqrt(2 * i.approachDecel * h), r = Math.max(0.15, Math.min(1, l / e.gait.fullSpeed(this.near ? "pressNear" : "pressFar")));
+      o.moveX = a / n * r, o.moveY = c / n * r;
+    } else
+      o.moveX = 0, o.moveY = 0;
+    return o;
+  }
+}
+class Te {
+  constructor(t, s) {
+    this.ball = t, this.view = new Ht(), this.g = new Et(), this.view.addChild(this.g), this.shadow = new Et(), s.addChild(this.shadow), this.p = { x: 0, y: 0, s: 1, d: 1 };
+  }
+  draw(t, s) {
+    const e = this.ball, i = e.px + (e.x - e.px) * s, a = e.py + (e.y - e.py) * s, c = e.pz + (e.z - e.pz) * s, n = this.p;
+    t.project(i + 0.03 * c, a + 0.02 * c, 0, n), this.shadow.clear().ellipse(n.x, n.y, n.s * V.radius * 1.2, n.s * V.radius * 0.6).fill({ color: 0, alpha: 0.35 }), t.project(i, a, c, n), this.view.zIndex = -t.depth(i, a, 0) + 0.01;
+    const o = Math.max(2.2, n.s * V.radius), h = this.g;
+    h.clear(), h.circle(n.x, n.y, o).fill(16250866);
+    const l = e.spin;
+    for (let r = 0; r < 3; r++) {
+      const p = l + r * Math.PI * 2 / 3, u = Math.cos(p);
+      u < -0.2 || h.circle(n.x + Math.sin(p) * o * 0.55, n.y - o * 0.1 + r * o * 0.2 - o * 0.2, o * 0.28 * (0.5 + 0.5 * u)).fill(2237739);
+    }
+    h.circle(n.x, n.y, o).stroke({ width: Math.max(0.6, o * 0.12), color: 9080726, alpha: 0.6 });
+  }
+}
+const Pe = {
+  shirt: 14035001,
+  trim: 16053492,
+  shorts: 16053492,
+  socks: 14035001,
+  boots: 1382172,
+  bootAccent: 15909198,
+  skin: 14263420,
+  hair: 2759442
+}, ke = {
+  shirt: 1916815,
+  trim: 15909198,
+  shorts: 1057357,
+  socks: 1916815,
+  boots: 16053492,
+  bootAccent: 1916815,
+  skin: 11039567,
+  hair: 1380364
+};
+async function He() {
+  const d = document.getElementById("stage"), t = new ie();
+  await t.init({
+    width: Yt,
+    height: ss,
+    background: 461586,
+    antialias: !0,
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    autoDensity: !0,
+    powerPreference: "high-performance"
+  }), d.appendChild(t.canvas);
+  const s = new Ht();
+  t.stage.addChild(s);
+  const e = () => {
+    const R = window.innerWidth, A = window.innerHeight, O = Math.min(R / Yt, A / ss), $ = Math.floor(Yt * O), X = Math.floor(ss * O);
+    t.renderer.resize($, X), s.scale.set($ / Yt);
+  };
+  e(), window.addEventListener("resize", e), window.addEventListener("orientationchange", () => setTimeout(e, 200));
+  const i = new he(), a = new Ht(), c = new le(), n = new de(), o = new Ht(), h = new Ht();
+  h.sortableChildren = !0, c.container.addChildAt(n.g, 1), a.addChild(c.container, o, h), s.addChild(a);
+  const l = [new As(-1), new As(1)];
+  for (const R of l) h.addChild(R.g);
+  const r = new $s({
+    x: -6,
+    y: 4,
+    heading: 0,
+    kit: Pe,
+    name: "P1",
+    abilities: { speed: 80, acceleration: 78, agility: 82, dribbling: 80, balance: 75 }
+  });
+  r.canDribble = !0;
+  const p = new Rs(r, o);
+  h.addChild(p.view), i.snap(r.x, r.y);
+  const u = new Se(-4.5, 4), C = new Le(u);
+  C.attach(r);
+  const x = new Te(u, o);
+  h.addChild(x.view);
+  const g = new $s({
+    x: 8,
+    y: -3,
+    heading: Math.PI,
+    kit: ke,
+    name: "DF",
+    abilities: { speed: 72, acceleration: 70, agility: 75 }
+  }), S = new Rs(g, o);
+  h.addChild(S.view);
+  const E = new Ce(g), m = { ball: !0, defender: !0 }, v = new Me();
+  s.addChild(v.view);
+  const M = new we();
+  new be(M);
+  const P = new ve({
+    onToggle(R, A) {
+      R === "debug" && (v.debug = A, I.classList.toggle("on", A)), R === "ball" && (m.ball = A, x.view.visible = x.shadow.visible = A, !A && u.owner && (u.owner.hasBall = !1, u.owner = null), A && (u.x = u.px = r.x + Math.cos(r.heading) * 1.2, u.y = u.py = r.y + Math.sin(r.heading) * 1.2, u.vx = u.vy = 0)), R === "defender" && (m.defender = A, S.view.visible = S.shadow.visible = A);
+    }
+  }), I = document.getElementById("btn-dbg");
+  I.addEventListener("click", () => {
+    v.debug = !v.debug, I.classList.toggle("on", v.debug), document.getElementById("tb-dbg").classList.toggle("on", v.debug);
+  });
+  const _ = document.getElementById("btn-tune");
+  _.addEventListener("click", () => _.classList.toggle("on", P.toggle()));
+  let D = 1;
+  const Y = document.getElementById("btn-slow");
+  Y.addEventListener("click", () => {
+    D = D === 1 ? 0.25 : 1, Y.classList.toggle("on", D < 1);
+  });
+  const Pt = async () => {
+    try {
+      document.fullscreenElement || await document.documentElement.requestFullscreen({ navigationUI: "hide" }), await screen.orientation?.lock?.("landscape");
+    } catch {
+    }
+  };
+  document.getElementById("btn-full").addEventListener("click", Pt);
+  const B = document.getElementById("start"), It = () => {
+    B.classList.contains("hidden") || (B.classList.add("hidden"), matchMedia("(pointer: coarse)").matches && Pt());
+  };
+  B.addEventListener("pointerup", It), window.addEventListener("keydown", It, { once: !0 }), window.addEventListener("gamepadconnected", () => setTimeout(It, 0));
+  let N = 0;
+  const U = () => {
+    const R = M.poll();
+    if (r.step(R, Dt), m.defender) {
+      const A = m.ball ? u.owner ?? u : r;
+      g.step(E.think(A.x, A.y), Dt);
+    }
+    m.ball && (u.step(Dt), C.update([r])), i.step(r.x, r.y, r.vx, r.vy, r.speed, Dt);
+  }, Z = { paused: !1 };
+  t.ticker.add((R) => {
+    const A = Math.min(R.deltaMS / 1e3, 0.1);
+    Z.paused || (N += A * D);
+    let O = 0;
+    for (; N >= Dt && O < Is; )
+      U(), N -= Dt, O++;
+    O === Is && (N = 0);
+    const $ = N / Dt;
+    i.interpolate($), c.update(i), n.update(i);
+    for (const Nt of l) Nt.update(i);
+    p.draw(i, $), m.defender && S.draw(i, $), m.ball && x.draw(i, $);
+    const X = [];
+    m.ball && X.push(`BALL    ${u.owner ? "保持" : "フリー"}  タッチ ${C.touches}回 (${b.dribble.touchEvery[C._key(r.mode)]}歩毎)`), m.defender && X.push(`DF      ${b.states[g.mode]?.label}  ${g.gait.stride.toFixed(2)}m × ${g.gait.cadence.toFixed(2)}`), v.update(A, r, M, D, { lines: X });
+  }), window.__solosaka = {
+    app: t,
+    player: r,
+    camera: i,
+    input: M,
+    ball: u,
+    dribble: C,
+    defender: g,
+    GAIT: b,
+    opts: m,
+    pause(R = !0) {
+      Z.paused = R, N = 0;
+    },
+    step(R = 1) {
+      for (let A = 0; A < R; A++) U();
+    },
+    teleport(R, A) {
+      r.teleport(R, A), i.snap(R, A);
+    }
+  };
+}
+He();
+
+</script>
+</body>
+</html>
