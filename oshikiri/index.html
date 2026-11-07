@@ -21,6 +21,8 @@
   --heat:#ff9a2e;     /* 熱 */
   --carry:#c6f04a;    /* 持ち越し・ボーナス熱 */
   --gold:#ffd447;
+  --numb:#c07aff;     /* しびれ */
+  --down:#5ab4ff;     /* 攻撃ダウン表示 */
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
@@ -69,8 +71,11 @@ button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
 .cell .empty{margin:auto;color:#4b5678;font-size:12px}
 .cell.can{border:2px solid var(--gold);background:rgba(255,212,71,.08);animation:glow 1s ease-in-out infinite alternate}
 .cell.can .empty{color:var(--gold);font-weight:700}
+.cell.can-move{border:2px solid var(--carry);background:rgba(198,240,74,.08);animation:glowm 1s ease-in-out infinite alternate}
+.cell.can-move .empty{color:var(--carry);font-weight:700}
 .cell.active{box-shadow:0 0 0 3px #fff,0 0 18px 4px rgba(255,255,255,.55)}
 @keyframes glow{from{box-shadow:0 0 0 0 rgba(255,212,71,.2)}to{box-shadow:0 0 14px 2px rgba(255,212,71,.55)}}
+@keyframes glowm{from{box-shadow:0 0 0 0 rgba(198,240,74,.2)}to{box-shadow:0 0 14px 2px rgba(198,240,74,.55)}}
 
 .unit{
   flex:1;border-radius:11px;padding:6px 6px 5px;
@@ -80,24 +85,47 @@ button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
 }
 .unit.side-p{--side:var(--p)}
 .unit.side-c{--side:var(--c)}
+.unit.msel{border-color:var(--carry);box-shadow:0 0 12px rgba(198,240,74,.7)}
 .unit .u-name{font-weight:700;font-size:13px;text-align:center;line-height:1.15;word-break:keep-all}
 .unit .u-cost{position:absolute;top:3px;left:4px;font-size:12px;color:var(--heat);font-weight:700}
+.unit .u-fs{position:absolute;top:2px;right:4px;font-size:12px}
 .unit .u-stats{display:flex;gap:10px;font-size:20px;font-weight:800;line-height:1}
 .unit .atk{color:#ffb35c}
+.unit .atk.down{color:var(--down)}
 .unit .hp{color:#7dffa8}
 .unit .hp.dmg{color:#ff8a8a}
 .unit .hp.hit{animation:hit .6s steps(2) 0s 1}
 .unit .lbl{font-size:12px;color:var(--sub)}
+.unit .tags{display:flex;gap:3px;flex-wrap:wrap;justify-content:center}
 @keyframes hit{0%,100%{color:#ff2a2a;transform:scale(1.25)}50%{color:#fff;transform:scale(1)}}
 .unit.sick{filter:saturate(.55) brightness(.85)}
 .unit .u-sick{
   font-size:12px;font-weight:700;color:#1a1300;background:var(--gold);
   border-radius:8px;padding:1px 8px;
 }
+.unit .u-sick.go{background:#9af0ff}
+.unit .u-numb{
+  font-size:12px;font-weight:700;color:#fff;background:var(--numb);
+  border-radius:8px;padding:1px 8px;
+}
 .unit.dying{animation:die .38s ease-in forwards}
 @keyframes die{to{transform:scale(.1) rotate(25deg);opacity:0}}
 .unit.placed{animation:pop .25s ease-out}
 @keyframes pop{from{transform:scale(.6);opacity:.2}to{transform:scale(1);opacity:1}}
+
+/* 効果ポップアップ(0.8秒) */
+.popup{
+  position:absolute;left:50%;top:6px;z-index:5;max-width:112%;width:max-content;
+  background:#fff;color:#14182a;font-weight:800;font-size:12px;line-height:1.2;text-align:center;
+  padding:4px 7px;border-radius:10px;box-shadow:0 3px 10px rgba(0,0,0,.55);
+  pointer-events:none;animation:popup .8s ease-out forwards;
+}
+@keyframes popup{
+  0%{opacity:0;transform:translate(-50%,8px) scale(.8)}
+  15%{opacity:1;transform:translate(-50%,0) scale(1.06)}
+  75%{opacity:1;transform:translate(-50%,-4px) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-14px) scale(1)}
+}
 
 /* ===== おしあいゲージ ===== */
 .gauge{flex:none;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 10px 8px}
@@ -127,8 +155,10 @@ button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
 
 /* ===== 手札 ===== */
 .hand-wrap{flex:none;position:relative}
-.hand-note{font-size:12px;color:var(--sub);margin:0 2px 3px;display:flex;justify-content:space-between}
+.hand-note{font-size:12px;color:var(--sub);margin:0 2px 3px;display:flex;justify-content:space-between;gap:6px}
 .hand-note.warn{color:var(--gold);font-weight:700}
+.hand-note .mv{color:var(--carry);font-weight:700}
+.hand-note .ng{color:#ff8a8a;font-weight:700}
 .hand{
   display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding:6px 2px 6px;
   -webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;scrollbar-width:none;
@@ -178,6 +208,7 @@ button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
 .log div.p{color:#9fd2ff}
 .log div.c{color:#ffadad}
 .log div.sys{color:var(--gold)}
+.log div.fx{color:#d7b6ff}
 .log div:last-child{font-weight:700}
 
 /* ===== モーダル ===== */
@@ -187,6 +218,7 @@ button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
   animation:fade .25s ease-out both;
 }
 .modal-bg.late{animation-delay:.6s}
+.modal-bg.top{z-index:70}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 .modal{
   width:100%;max-width:340px;background:var(--panel);border:1px solid var(--line);
@@ -204,11 +236,35 @@ button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
 .lose{color:var(--c)}
 .draw{color:var(--gold)}
 
+/* カード詳細 */
+.detail{
+  text-align:left;border:2px solid var(--uc);
+  background:linear-gradient(170deg,var(--uc) -60%,var(--panel) 45%);
+}
+.detail .d-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.detail .d-head .c-cost{
+  width:32px;height:32px;border-radius:50%;background:var(--heat);color:#1a0e00;
+  font-weight:900;font-size:17px;display:flex;align-items:center;justify-content:center;flex:none;
+}
+.detail .d-name{font-size:20px;font-weight:800}
+.detail .d-owner{font-size:12px;color:var(--sub)}
+.detail .d-stats{display:flex;gap:16px;font-size:18px;font-weight:800;margin-bottom:6px}
+.detail .d-stats .atk{color:#ffb35c}
+.detail .d-stats .atk.down{color:var(--down)}
+.detail .d-stats .hp{color:#7dffa8}
+.detail .d-stats small{font-size:12px;color:var(--sub);font-weight:400}
+.detail .d-tags{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.detail .d-tag{font-size:12px;font-weight:700;border-radius:8px;padding:2px 8px;background:#2e3650}
+.detail .d-tag.numb{background:var(--numb)}
+.detail .d-tag.sick{background:var(--gold);color:#1a1300}
+.detail .d-text{font-size:14px;line-height:1.5;background:rgba(0,0,0,.3);border-radius:10px;padding:10px;margin-bottom:14px}
+.detail .d-flavor{font-size:12px;color:var(--sub);margin:-8px 0 12px}
+
 /* ===== トースト ===== */
 #toast{
-  position:fixed;left:50%;bottom:30%;transform:translateX(-50%);z-index:60;
+  position:fixed;left:50%;bottom:30%;transform:translateX(-50%);z-index:80;
   background:rgba(0,0,0,.85);color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;
-  pointer-events:none;opacity:0;transition:opacity .2s;
+  pointer-events:none;opacity:0;transition:opacity .2s;max-width:90%;text-align:center;
 }
 #toast.show{opacity:1}
 
@@ -243,35 +299,135 @@ const DECK_SIZE        = 20;  // デッキ枚数
 const START_HAND       = 4;   // 初期手札
 const SECOND_BONUS     = 1;   // 後攻1ターン目の熱ボーナス
 const LANE_COUNT       = 3;   // レーン数
+const MOVE_COST        = 1;   // 移動にかかる熱
+const MOVES_PER_TURN   = 1;   // 1ターンに移動できる回数
 const CLASH_INTERVAL   = 400; // 衝突1レーンごとの間隔(ms)
 const CPU_INTERVAL     = 500; // CPUの1手ごとの間隔(ms)
+const EFFECT_WAIT      = 650; // 効果発動を見せる時間(ms)
+const POPUP_MS         = 800; // 効果名ポップアップの表示時間(ms)
+const LONG_PRESS_MS    = 500; // 長押し判定(ms)
 const LOG_LINES        = 5;   // 表示するログ行数
 const LANE_NAMES       = ['左', '中', '右'];
 
 /* =========================================================
    カードデータ
-   copies: デッキに入れる枚数(0 = 定義のみ / STEP2用)
-   effect: 将来ここに効果関数を差し込む。
-     例) effect: { onPlay(ctx){...}, onClash(ctx){...}, onSurvive(ctx){...} }
-     STEP1では全てnull(テキスト表示のみ)
+   copies: デッキに入れる枚数(0 = 定義のみ)
+   text  : カード上に表示する短い効果テキスト
+   desc  : 長押し詳細で表示する説明文
+   effect: タイミング別フックとフラグ(不要なカードはnull)
+     フック
+       onPlace(state, unit)               … 場に出したとき
+       onCollideAfter(state, unit)        … 自分が衝突した後(衝突を起こした側のみ)
+       onDestroyEnemy(state, unit, enemy) … 自分のダメージで敵を破壊したとき
+       getAttackModifier(state, unit, target)
+         … 盤上にいる unit(この効果の持ち主)が、target の攻撃値に加える補正を返す。
+           攻撃値 = 基本攻撃 + 盤上の全ユニットの補正の合計(0未満にはならない)
+     フラグ
+       firstStrike  … 先制(先にダメージを与え、倒せば反撃を受けない)
+       ignoreDeploy … 着陣中でも衝突できる
+       freeMove     … 熱0で移動でき、1ターン1回の回数に数えない
+       numbOnHit    … ダメージを与えて生き残った敵を「しびれ」にする
    ========================================================= */
 const CARDS = [
-  { id: 'homurabion',  name: 'ホムラビオン',   cost: 1, atk: 1, hp: 2, copies: 2, color: '#ff6a2e', text: '本気モードになると攻撃+2',           effect: null },
-  { id: 'hinokorou',   name: 'ヒノコロウ',     cost: 1, atk: 2, hp: 1, copies: 2, color: '#ff3b3b', text: '速攻役',                             effect: null },
-  { id: 'kiramedaka',  name: 'キラメダカ',     cost: 2, atk: 1, hp: 3, copies: 2, color: '#ffe14a', text: '場に出したときカードを1枚引く',       effect: null },
-  { id: 'awagamet',    name: 'アワガメット',   cost: 2, atk: 0, hp: 5, copies: 2, color: '#4ad2ff', text: '壁役',                               effect: null },
-  { id: 'borukitsune', name: 'ボルキツネ',     cost: 3, atk: 2, hp: 3, copies: 2, color: '#ffc02e', text: '衝突時、隣レーンの敵にも1ダメージ',   effect: null },
-  { id: 'sabakuroko',  name: 'サバクロコ',     cost: 3, atk: 3, hp: 3, copies: 2, color: '#c8a050', text: '衝突で生き残るとごきげん+2',          effect: null },
-  { id: 'nokufukurou', name: 'ノクフクロウ',   cost: 3, atk: 2, hp: 2, copies: 2, color: '#9a6aff', text: '移動に熱を使わない',                  effect: null },
-  { id: 'shizukurake', name: 'シズクラーケ',   cost: 4, atk: 2, hp: 4, copies: 2, color: '#3a7cff', text: '向かいの敵の攻撃-1',                  effect: null },
-  { id: 'benomukade',  name: 'ベノムカデ',     cost: 4, atk: 2, hp: 4, copies: 2, color: '#a0ff3a', text: 'ダメージを与えた敵は次の衝突で攻撃できない', effect: null },
-  { id: 'tsurarapto',  name: 'ツララプトル',   cost: 5, atk: 4, hp: 4, copies: 1, color: '#9af0ff', text: '出したターンから衝突に参加できる',    effect: null },
-  { id: 'ikazuchita',  name: 'イカヅチーター', cost: 5, atk: 5, hp: 3, copies: 1, color: '#fff04a', text: '衝突で必ず先に攻撃する',              effect: null },
-  // ---- STEP2用(デッキには入れない) ----
-  { id: 'yukihyouga',  name: 'ユキヒョウガ',   cost: 6, atk: 4, hp: 6, copies: 0, color: '#d8f4ff', text: '敵を倒すたびにゲージを1押す',         effect: null },
-  { id: 'gotsuinodon', name: 'ゴツイノドン',   cost: 6, atk: 3, hp: 8, copies: 0, color: '#a08060', text: '場に出したときゲージを1押す',         effect: null },
-  { id: 'tenkujira',   name: 'テンクウジラ',   cost: 7, atk: 5, hp: 8, copies: 0, color: '#6ab0ff', text: '場に出したとき敵全員に1ダメージ',     effect: null },
-  { id: 'hikaryuga',   name: 'ヒカリュウガ',   cost: 7, atk: 6, hp: 6, copies: 0, color: '#fff8c0', text: '本気モード中、衝突のたびにゲージを2押す', effect: null },
+  { id: 'homurabion',  name: 'ホムラビオン',   cost: 1, atk: 1, hp: 2, copies: 2, color: '#ff6a2e',
+    text: '本気モードになると攻撃+2',
+    desc: '本気モードになると攻撃+2。',
+    effect: null },
+  { id: 'hinokorou',   name: 'ヒノコロウ',     cost: 1, atk: 2, hp: 1, copies: 2, color: '#ff3b3b',
+    text: '速攻役',
+    desc: '速攻役。熱1で攻撃2を出せるが、体力は1しかない。特別な効果はない。',
+    effect: null },
+  { id: 'kiramedaka',  name: 'キラメダカ',     cost: 2, atk: 1, hp: 3, copies: 2, color: '#ffe14a',
+    text: '場に出したときカードを1枚引く',
+    desc: '場に出したとき、カードを1枚引く(山札が0枚なら引かない)。',
+    effect: {
+      onPlace(state, unit) {
+        popup(unit, 'キラッ!1枚ドロー');
+        if (draw(unit.side, true)) addLog('キラメダカの登場!カードを1枚引いた', 'fx');
+        else addLog('キラメダカの登場!…山札が無くて引けない', 'fx');
+      },
+    } },
+  { id: 'awagamet',    name: 'アワガメット',   cost: 2, atk: 0, hp: 5, copies: 2, color: '#4ad2ff',
+    text: '壁役',
+    desc: '壁役。攻撃は0だが体力5で敵の攻撃を受け止める。特別な効果はない。',
+    effect: null },
+  { id: 'borukitsune', name: 'ボルキツネ',     cost: 3, atk: 2, hp: 3, copies: 2, color: '#ffc02e',
+    text: '衝突時、隣レーンの敵にも1ダメージ',
+    desc: '自分が衝突した後、左右の隣レーンにいる敵ユニットそれぞれに1ダメージ。向かいが空でも発動する。',
+    effect: {
+      onCollideAfter(state, unit) {
+        const foes = adjacentLanes(unit.lane)
+          .map(l => P(opp(unit.side)).lanes[l])
+          .filter(e => e && e.hp > 0);
+        if (!foes.length) return;
+        popup(unit, 'パチッ!隣に1ダメージ');
+        foes.forEach(e => dealDamage(e, 1, unit));
+        addLog(`ボルキツネのパチッ!${foes.map(e => e.name).join('と')}に1ダメージ`, 'fx');
+      },
+    } },
+  { id: 'sabakuroko',  name: 'サバクロコ',     cost: 3, atk: 3, hp: 3, copies: 1, color: '#c8a050',
+    text: '衝突で生き残るとごきげん+2',
+    desc: '衝突で生き残るとごきげん+2。',
+    effect: null },
+  { id: 'nokufukurou', name: 'ノクフクロウ',   cost: 3, atk: 2, hp: 2, copies: 1, color: '#9a6aff',
+    text: '移動に熱を使わない',
+    desc: '熱0で移動できる。この移動は「1ターン1回」の回数に数えない(ノクフクロウ自身の移動は1ターン1回まで)。',
+    effect: { freeMove: true } },
+  { id: 'shizukurake', name: 'シズクラーケ',   cost: 4, atk: 2, hp: 4, copies: 1, color: '#3a7cff',
+    text: '向かいの敵の攻撃-1',
+    desc: '向かいにいる敵ユニットの攻撃を-1する(0未満にはならない)。場にいる限り常に有効。',
+    effect: {
+      popupText: 'ジワッ!攻撃-1',
+      getAttackModifier(state, unit, target) {
+        return (target.side !== unit.side && target.lane === unit.lane) ? -1 : 0;
+      },
+    } },
+  { id: 'benomukade',  name: 'ベノムカデ',     cost: 4, atk: 2, hp: 4, copies: 1, color: '#a0ff3a',
+    text: 'ダメージを与えた敵は次の衝突で攻撃できない',
+    desc: 'ベノムカデのダメージを受けて生き残った敵は「しびれ」になり、次の自分のターンの衝突を1回スキップする(ダメージもゲージ押しもしない)。防御側としての反撃は通常どおり行う。',
+    effect: { numbOnHit: true } },
+  { id: 'tsurarapto',  name: 'ツララプトル',   cost: 5, atk: 4, hp: 4, copies: 1, color: '#9af0ff',
+    text: '出したターンから衝突に参加できる',
+    desc: '着陣中でも、出したターンから衝突に参加できる。',
+    effect: { ignoreDeploy: true } },
+  { id: 'ikazuchita',  name: 'イカヅチーター', cost: 5, atk: 5, hp: 3, copies: 1, color: '#fff04a',
+    text: '衝突で必ず先に攻撃する',
+    desc: '⚡先制:向かいの敵と衝突するとき、攻撃側・防御側どちらでも先にダメージを与える。それで敵を破壊したら自分はダメージを受けない。両方が先制なら通常どおり同時。',
+    effect: { firstStrike: true } },
+  { id: 'yukihyouga',  name: 'ユキヒョウガ',   cost: 6, atk: 4, hp: 6, copies: 1, color: '#d8f4ff',
+    text: '敵を倒すたびにゲージを1押す',
+    desc: '自分のダメージで敵を破壊するたびに、ゲージを相手側に1押す(攻撃側・防御側どちらで倒しても発動)。',
+    effect: {
+      onDestroyEnemy(state, unit, enemy) {
+        popup(unit, 'ガオッ!ゲージを1押す');
+        pushGaugeFor(unit.side, 1);
+        addLog(`ユキヒョウガが${enemy.name}を倒した!ゲージを1押した`, 'fx');
+      },
+    } },
+  { id: 'gotsuinodon', name: 'ゴツイノドン',   cost: 6, atk: 3, hp: 8, copies: 1, color: '#a08060',
+    text: '場に出したときゲージを1押す',
+    desc: '場に出したとき、ゲージを相手側に1押す。',
+    effect: {
+      onPlace(state, unit) {
+        popup(unit, 'ドスン!ゲージを1押す');
+        pushGaugeFor(unit.side, 1);
+        addLog('ゴツイノドンの登場!ゲージを1押した', 'fx');
+      },
+    } },
+  { id: 'tenkujira',   name: 'テンクウジラ',   cost: 7, atk: 5, hp: 8, copies: 1, color: '#6ab0ff',
+    text: '場に出したとき敵全員に1ダメージ',
+    desc: '場に出したとき、敵ユニット全員に1ダメージ。',
+    effect: {
+      onPlace(state, unit) {
+        popup(unit, 'ザブーン!敵全員に1ダメージ');
+        P(opp(unit.side)).lanes.forEach(e => { if (e && e.hp > 0) dealDamage(e, 1, unit); });
+        addLog('テンクウジラの登場!敵全員に1ダメージ', 'fx');
+      },
+    } },
+  { id: 'hikaryuga',   name: 'ヒカリュウガ',   cost: 7, atk: 6, hp: 6, copies: 1, color: '#fff8c0',
+    text: '本気モード中、衝突のたびにゲージを2押す',
+    desc: '本気モード中、衝突のたびにゲージを2押す。',
+    effect: null },
 ];
 const CARD_MAP = Object.fromEntries(CARDS.map(c => [c.id, c]));
 
@@ -292,6 +448,7 @@ function createPlayer(side) {
     heatExtra: 0,      // 残り熱(持ち越し・後攻ボーナス分)
     carry: 0,          // 次ターンへ持ち越す熱
     turn: 0,           // 自分のターン数
+    movesUsed: 0,      // このターンに使った移動回数(freeMoveは数えない)
   };
 }
 
@@ -304,6 +461,21 @@ const opp = side => (side === 'p' ? 'c' : 'p');
 const sideName = side => (side === 'p' ? 'あなた' : 'CPU');
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 const heatTotal = pl => pl.heatBase + pl.heatExtra;
+const isOver = () => state.phase === 'over';
+
+/** 隣のレーン番号(左→右の順) */
+function adjacentLanes(lane) {
+  return [lane - 1, lane + 1].filter(l => l >= 0 && l < LANE_COUNT);
+}
+
+/** 盤上の生きているユニット一覧(左レーンから順、同じレーンはプレイヤー→CPU) */
+function boardUnits() {
+  const list = [];
+  for (let l = 0; l < LANE_COUNT; l++) {
+    ['p', 'c'].forEach(s => { const u = P(s).lanes[l]; if (u && u.hp > 0) list.push(u); });
+  }
+  return list;
+}
 
 /** 配列をシャッフル(Fisher-Yates) */
 function shuffle(arr) {
@@ -322,28 +494,144 @@ function buildDeck() {
   return shuffle(deck);
 }
 
-/** バトルログに1行追加(cls: 'p' | 'c' | 'sys' | '') */
+/** バトルログに1行追加(cls: 'p' | 'c' | 'sys' | 'fx' | '') */
 function addLog(text, cls = '') {
   state.log.push({ text, cls });
-  if (state.log.length > 50) state.log.shift();
+  if (state.log.length > 60) state.log.shift();
 }
 
-/** 画面下部に短いメッセージを出す */
+/** 画面中央下に短いメッセージを出す */
 let toastTimer = null;
 function showToast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 1200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1400);
 }
 
-/** 効果フック呼び出し口(STEP1ではeffectが全てnullなので何もしない) */
-function runEffect(unit, hook, ctx) {
-  const card = CARD_MAP[unit.id];
-  if (card.effect && typeof card.effect[hook] === 'function') {
-    card.effect[hook]({ state, unit, ...ctx });
+/* =========================================================
+   効果まわりの共通処理
+   ========================================================= */
+
+/** ユニットのカード効果オブジェクト(無ければnull) */
+const effectOf = unit => CARD_MAP[unit.id].effect;
+
+/** フラグを持っているか */
+function hasFlag(unit, flag) {
+  const e = effectOf(unit);
+  return !!(e && e[flag]);
+}
+
+/** フックを持っているか */
+function hasHook(unit, hook) {
+  const e = effectOf(unit);
+  return !!(e && typeof e[hook] === 'function');
+}
+
+/** 攻撃値を計算(盤上の getAttackModifier を合計。0未満にはしない)
+ *  extra: まだ盤上にいない仮ユニット(CPUの配置予測用) */
+function effAtk(unit, target = null, extra = []) {
+  let v = unit.atk;
+  boardUnits().concat(extra).forEach(src => {
+    if (hasHook(src, 'getAttackModifier')) v += effectOf(src).getAttackModifier(state, src, unit, target);
+  });
+  return Math.max(0, v);
+}
+
+/** 向かいにいる敵ユニット(いなければnull) */
+function facing(unit) {
+  const e = P(opp(unit.side)).lanes[unit.lane];
+  return e && e.hp > 0 ? e : null;
+}
+
+/** ユニットの上に効果名をポップアップ表示(レーン単位で保持するので破壊されても見える) */
+function popup(unit, text) {
+  state.popups.push({ side: unit.side, lane: unit.lane, text, t: Date.now() });
+}
+
+/** ダメージを与える。破壊されたら倒した相手(killedBy)を記録 */
+function dealDamage(target, amount, source) {
+  if (!target || amount <= 0 || target.hp <= 0) return 0;
+  target.hp -= amount;
+  target.hitAt = Date.now();
+  if (target.hp <= 0 && !target.killedBy) target.killedBy = source || null;
+  return amount;
+}
+
+/** side 側から見て相手側へゲージを押す */
+function pushGaugeFor(side, n) {
+  pushGauge(side === 'p' ? n : -n);
+}
+
+/** ベノムカデ等:ダメージを与えて生き残った敵をしびれさせる */
+function applyNumb(src, tgt, dmg) {
+  if (dmg > 0 && hasFlag(src, 'numbOnHit') && tgt.hp > 0) {
+    tgt.numb = true;
+    popup(tgt, 'ビリビリ!しびれ');
+    addLog(`${src.name}の毒!${tgt.name}はしびれた`, 'fx');
   }
+}
+
+/** 攻撃ダウン効果(シズクラーケ等)が効いていればポップアップ */
+function showAttackDown(unit, target) {
+  boardUnits().forEach(src => {
+    if (!hasHook(src, 'getAttackModifier')) return;
+    const m = effectOf(src).getAttackModifier(state, src, unit, target);
+    if (m < 0) popup(src, effectOf(src).popupText || `攻撃${m}`);
+  });
+}
+
+/** 体力0以下のユニットを左レーンから順に破壊し、onDestroyEnemy を処理する。
+ *  pair: 衝突した2体(両方破壊なら「相打ち」と記録) */
+async function settleDeaths(pair = null) {
+  const gid = state.gameId;
+  for (let loop = 0; loop < 10; loop++) {
+    const dead = [];
+    for (let l = 0; l < LANE_COUNT; l++) {
+      ['p', 'c'].forEach(s => { const u = P(s).lanes[l]; if (u && u.hp <= 0) dead.push(u); });
+    }
+    if (!dead.length) return;
+    dead.forEach(u => { u.dying = true; });
+    render();
+    await sleep(380);
+    if (gid !== state.gameId) return;
+    dead.forEach(u => {
+      const pl = P(u.side);
+      if (pl.lanes[u.lane] === u) pl.lanes[u.lane] = null;
+    });
+    if (pair && pair.length === 2 && pair.every(u => dead.includes(u))) {
+      addLog(`相打ち!${pair[0].name}と${pair[1].name}は破壊された`, 'sys');
+      dead.filter(u => !pair.includes(u)).forEach(u => addLog(`${u.name}は破壊された`, opp(u.side)));
+    } else {
+      dead.forEach(u => addLog(`${u.name}は破壊された`, opp(u.side)));
+    }
+    pair = null;
+    render();
+    // 倒した側の onDestroyEnemy(左レーンから順)
+    for (const u of dead) {
+      const k = u.killedBy;
+      if (k && k.side !== u.side && hasHook(k, 'onDestroyEnemy')) {
+        effectOf(k).onDestroyEnemy(state, k, u);
+        render();
+        await sleep(EFFECT_WAIT);
+        if (gid !== state.gameId) return;
+        if (checkWin()) return;
+      }
+    }
+  }
+}
+
+/** 効果フックを呼び、見せる時間を取り、破壊・勝敗判定まで処理する */
+async function runHook(unit, hook) {
+  if (!hasHook(unit, hook)) return;
+  const gid = state.gameId;
+  effectOf(unit)[hook](state, unit);
+  render();
+  await sleep(EFFECT_WAIT);
+  if (gid !== state.gameId) return;
+  if (checkWin()) return;
+  await settleDeaths();
 }
 
 /* =========================================================
@@ -355,14 +643,17 @@ function newGame() {
   const gameId = state ? state.gameId + 1 : 1;
   state = {
     gameId,                 // 再戦時に古い非同期処理を止めるためのID
-    phase: 'mulligan',      // mulligan | main | cpu | clash | discard | over
+    phase: 'mulligan',      // mulligan | main | effect | cpu | clash | discard | over
     mulliganUsed: false,
     first: Math.random() < 0.5 ? 'p' : 'c',
     turnSide: null,
     gauge: 0,
     selected: null,         // 選択中の手札インデックス
+    moveSel: null,          // 移動元に選んだ自分のレーン
     discardSel: null,       // 捨てる候補の手札インデックス
     activeLane: null,       // 衝突処理中のレーン
+    popups: [],             // 効果名ポップアップ
+    detail: null,           // 長押し詳細 {id, uid}
     log: [],
     result: null,
     uid: 0,
@@ -412,9 +703,11 @@ function draw(side, silent = false) {
 async function startTurn(side) {
   state.turnSide = side;
   state.selected = null;
+  state.moveSel = null;
   state.discardSel = null;
   const pl = P(side);
   pl.turn++;
+  pl.movesUsed = 0;
   pl.heatMax = Math.min(HEAT_START + (pl.turn - 1), HEAT_CAP);
   pl.heatBase = pl.heatMax;
   const bonus = (side !== state.first && pl.turn === 1) ? SECOND_BONUS : 0;
@@ -442,8 +735,9 @@ function spendHeat(pl, cost) {
   pl.heatBase -= (cost - fromExtra);
 }
 
-/** 手札のユニットをレーンに配置する。成功したらtrue */
-function placeUnit(side, handIdx, lane) {
+/** 手札のユニットをレーンに配置する(onPlace効果も処理)。成功したらtrue */
+async function placeUnit(side, handIdx, lane) {
+  const gid = state.gameId;
   const pl = P(side);
   const id = pl.hand[handIdx];
   if (id === undefined || pl.lanes[lane]) return false;
@@ -454,14 +748,65 @@ function placeUnit(side, handIdx, lane) {
   const unit = {
     uid: ++state.uid, id: card.id, name: card.name,
     atk: card.atk, hp: card.hp, maxHp: card.hp,
-    side, sick: true,      // sick = 着陣中(このターンは衝突しない)
-    hit: false, dying: false, justPlaced: true,
+    side, lane,
+    sick: true,        // 着陣中(このターンは衝突しない。ignoreDeployは例外)
+    numb: false,       // しびれ(次の自分の衝突を1回スキップ)
+    movedTurn: 0,      // 最後に移動した自分のターン番号(freeMove用)
+    hitAt: 0, dying: false, justPlaced: true, killedBy: null,
   };
   pl.lanes[lane] = unit;
   addLog(`${sideName(side)}は${card.name}を${LANE_NAMES[lane]}レーンに置いた`, side);
-  runEffect(unit, 'onPlay', { lane });
+  render();
+  if (hasHook(unit, 'onPlace')) {
+    await sleep(250);
+    if (gid !== state.gameId) return true;
+    await runHook(unit, 'onPlace');
+  }
   return true;
 }
+
+/* ---------- 移動 ---------- */
+
+/** ユニットが移動できるか調べる。{ok, reason, cost, free, targets} */
+function moveInfo(unit) {
+  const pl = P(unit.side);
+  const free = hasFlag(unit, 'freeMove');
+  const targets = adjacentLanes(unit.lane).filter(l => !pl.lanes[l]);
+  let reason = null;
+  if (free) {
+    if (unit.movedTurn === pl.turn) reason = 'このユニットはもう移動した';
+  } else if (pl.movesUsed >= MOVES_PER_TURN) {
+    reason = '移動済み(1ターン1回まで)';
+  } else if (heatTotal(pl) < MOVE_COST) {
+    reason = `熱が足りない(移動は熱${MOVE_COST})`;
+  }
+  if (!reason && !targets.length) reason = '隣に空いているレーンがない';
+  return { ok: !reason, reason, cost: free ? 0 : MOVE_COST, free, targets: reason ? [] : targets };
+}
+
+/** ユニットを隣の空きレーンへ移動する。成功したらtrue */
+function moveUnit(side, from, to) {
+  const pl = P(side);
+  const u = pl.lanes[from];
+  if (!u) return false;
+  const info = moveInfo(u);
+  if (!info.ok || !info.targets.includes(to)) return false;
+  spendHeat(pl, info.cost);
+  pl.lanes[from] = null;
+  pl.lanes[to] = u;
+  u.lane = to;
+  u.movedTurn = pl.turn;
+  if (info.free) {
+    popup(u, 'スイッ!無料移動');
+    addLog(`${u.name}は${LANE_NAMES[from]}→${LANE_NAMES[to]}へ移動(熱0)`, side);
+  } else {
+    pl.movesUsed++;
+    addLog(`${u.name}は${LANE_NAMES[from]}→${LANE_NAMES[to]}へ移動(熱${info.cost})`, side);
+  }
+  return true;
+}
+
+/* ---------- ゲージ・勝敗 ---------- */
 
 /** ゲージを動かす(+はプレイヤー側、-はCPU側) */
 function pushGauge(amount) {
@@ -471,6 +816,7 @@ function pushGauge(amount) {
 
 /** 勝敗判定(ゲージ±8)。決着したらtrue */
 function checkWin() {
+  if (isOver()) return true;
   if (state.gauge >= GAUGE_MAX) { endGame('p', 'ゲージを押し切った!'); return true; }
   if (state.gauge <= -GAUGE_MAX) { endGame('c', 'ゲージを押し切られた…'); return true; }
   return false;
@@ -489,52 +835,92 @@ function judgeByGauge() {
 function endGame(winner, reason) {
   state.phase = 'over';
   state.activeLane = null;
+  state.selected = null;
+  state.moveSel = null;
   state.result = { winner, reason };
   addLog(winner === 'draw' ? '引き分け!' : `${sideName(winner)}の勝利!`, 'sys');
   render();
 }
+
+/* ---------- 衝突 ---------- */
 
 /** 1レーン分の衝突処理(ターンプレイヤーのユニットだけが衝突を起こす) */
 async function resolveClash(side, lane) {
   const gid = state.gameId;
   const me = P(side), op = P(opp(side));
   const a = me.lanes[lane];
-  if (!a || a.sick) return; // 不在 or 着陣中は衝突しない
+  if (!a) return;
+  if (a.sick && !hasFlag(a, 'ignoreDeploy')) return; // 着陣中は衝突しない
 
   state.activeLane = lane;
   render();
   await sleep(150);
   if (gid !== state.gameId) return;
 
+  // しびれ:この衝突をスキップしてしびれ解除
+  if (a.numb) {
+    a.numb = false;
+    popup(a, 'しびれて動けない…');
+    addLog(`${a.name}はしびれて衝突できない`, 'fx');
+    render();
+    await sleep(CLASH_INTERVAL + 250);
+    if (gid !== state.gameId) return;
+    state.activeLane = null;
+    render();
+    return;
+  }
+  if (a.sick) popup(a, 'ヒュオッ!即参戦');
+
   const d = op.lanes[lane];
   if (d) {
-    // 向かいに敵がいる:お互いに攻撃値ぶんのダメージを同時に与える
-    runEffect(a, 'onClash', { lane, target: d });
-    const toD = a.atk, toA = d.atk;
-    d.hp -= toD;
-    a.hp -= toA;
-    d.hit = toD > 0;
-    a.hit = toA > 0;
+    // 向かいに敵がいる:攻撃値ぶんのダメージを与え合う
+    const atkA = effAtk(a, d), atkD = effAtk(d, a);
+    showAttackDown(a, d);
+    showAttackDown(d, a);
+    const fa = hasFlag(a, 'firstStrike'), fd = hasFlag(d, 'firstStrike');
+    let toD = 0, toA = 0;
+    if (fa && !fd) {
+      popup(a, '⚡先制攻撃!');
+      toD = dealDamage(d, atkA, a);
+      if (d.hp > 0) toA = dealDamage(a, atkD, d);
+    } else if (fd && !fa) {
+      popup(d, '⚡先制攻撃!');
+      toA = dealDamage(a, atkD, d);
+      if (a.hp > 0) toD = dealDamage(d, atkA, a);
+    } else {
+      toD = dealDamage(d, atkA, a);
+      toA = dealDamage(a, atkD, d);
+    }
     addLog(`${a.name}と${d.name}が衝突!(${toD}/${toA}ダメージ)`, side);
-    const dead = [a, d].filter(u => u.hp <= 0);
-    dead.forEach(u => { u.dying = true; });
+    if (fa && !fd && d.hp <= 0) addLog(`⚡${a.name}の先制!反撃を受けなかった`, 'fx');
+    if (fd && !fa && a.hp <= 0) addLog(`⚡${d.name}の先制!反撃を受けなかった`, 'fx');
+    applyNumb(a, d, toD);
+    applyNumb(d, a, toA);
     render();
     await sleep(CLASH_INTERVAL);
     if (gid !== state.gameId) return;
-    a.hit = d.hit = false;
-    if (dead.length === 2) addLog(`相打ち!${a.name}と${d.name}は破壊された`, 'sys');
-    else if (dead.length === 1) addLog(`${dead[0].name}は破壊された`, dead[0].side === 'p' ? 'c' : 'p');
-    if (a.hp <= 0) me.lanes[lane] = null;
-    if (d.hp <= 0) op.lanes[lane] = null;
   } else {
     // 向かいが空:攻撃値ぶんゲージを相手側へ押す
-    const dir = side === 'p' ? 1 : -1;
-    pushGauge(dir * a.atk);
-    addLog(`${a.name}がゲージを${a.atk}押した`, side);
+    const atk = effAtk(a, null);
+    pushGaugeFor(side, atk);
+    addLog(`${a.name}がゲージを${atk}押した`, side);
     render();
     await sleep(CLASH_INTERVAL);
     if (gid !== state.gameId) return;
+    if (checkWin()) return;
   }
+
+  // 衝突後の効果(ボルキツネ等)
+  if (hasHook(a, 'onCollideAfter')) {
+    effectOf(a).onCollideAfter(state, a);
+    render();
+    await sleep(EFFECT_WAIT);
+    if (gid !== state.gameId) return;
+    if (checkWin()) return;
+  }
+
+  await settleDeaths(d ? [a, d] : null);
+  if (gid !== state.gameId || isOver()) return;
   state.activeLane = null;
   render();
   checkWin();
@@ -545,6 +931,7 @@ async function endTurn(side) {
   const gid = state.gameId;
   state.phase = 'clash';
   state.selected = null;
+  state.moveSel = null;
   render();
   const pl = P(side);
 
@@ -556,7 +943,7 @@ async function endTurn(side) {
   } else {
     for (let lane = 0; lane < LANE_COUNT; lane++) {
       await resolveClash(side, lane);
-      if (gid !== state.gameId || state.phase === 'over') return;
+      if (gid !== state.gameId || isOver()) return;
     }
   }
   state.activeLane = null;
@@ -620,25 +1007,45 @@ function cpuDiscard() {
 }
 
 /* =========================================================
-   CPU(STEP1:ランダム配置)
+   CPU(STEP2:高コスト優先+簡単なレーン選び)
    ========================================================= */
-/** 熱の範囲内で置けるユニットをランダムな空きレーンに置けるだけ置く */
+/** 置くレーンを選ぶ:相打ち以上が取れるレーン > 向かいが空のレーン > ランダム */
+function cpuChooseLane(id, empty) {
+  const card = CARD_MAP[id];
+  const foes = P('p').lanes;
+  const good = [], open = [];
+  empty.forEach(i => {
+    const e = foes[i];
+    if (e) {
+      const tmp = { id, name: card.name, atk: card.atk, hp: card.hp, side: 'c', lane: i };
+      if (effAtk(tmp, e, [tmp]) >= e.hp) good.push(i);
+    } else {
+      open.push(i);
+    }
+  });
+  return pick(good.length ? good : open.length ? open : empty);
+}
+
+/** 熱の範囲内で、コストの高いユニットから順に置けるだけ置く */
 async function cpuTurn() {
   const gid = state.gameId;
   const pl = P('c');
   await sleep(CPU_INTERVAL);
-  while (gid === state.gameId) {
+  while (gid === state.gameId && !isOver()) {
     const empty = [];
     for (let i = 0; i < LANE_COUNT; i++) if (!pl.lanes[i]) empty.push(i);
-    const playable = pl.hand
-      .map((id, idx) => ({ id, idx }))
-      .filter(x => CARD_MAP[x.id].cost <= heatTotal(pl));
-    if (!empty.length || !playable.length) break;
-    placeUnit('c', pick(playable).idx, pick(empty));
+    const heat = heatTotal(pl);
+    const cands = shuffle(pl.hand.map((id, idx) => ({ id, idx, cost: CARD_MAP[id].cost })))
+      .filter(x => x.cost <= heat)
+      .sort((a, b) => b.cost - a.cost);
+    if (!empty.length || !cands.length) break;
+    const c = cands[0];
+    await placeUnit('c', c.idx, cpuChooseLane(c.id, empty));
+    if (gid !== state.gameId || isOver()) return;
     render();
     await sleep(CPU_INTERVAL);
   }
-  if (gid !== state.gameId) return;
+  if (gid !== state.gameId || isOver()) return;
   await endTurn('c');
 }
 
@@ -657,7 +1064,7 @@ function animateGauge() {
 }
 function gaugeStep(now) {
   if (!gaugeTween) return;
-  const t = Math.min(1, (now - gaugeTween.start) / gaugeTween.dur);
+  const t = Math.max(0, Math.min(1, (now - gaugeTween.start) / gaugeTween.dur));
   const e = 1 - Math.pow(1 - t, 3);
   gaugeVis = gaugeTween.from + (gaugeTween.to - gaugeTween.from) * e;
   applyGaugeDom();
@@ -685,6 +1092,9 @@ function render() {
   // 手札の横スクロール位置を保持
   const handEl = root.querySelector('.hand');
   const scroll = handEl ? handEl.scrollLeft : 0;
+  // 期限切れのポップアップを捨てる
+  const now = Date.now();
+  state.popups = state.popups.filter(p => now - p.t < POPUP_MS);
 
   root.innerHTML =
     renderOppBar() +
@@ -695,7 +1105,8 @@ function render() {
     renderHand() +
     renderControls() +
     renderLog() +
-    renderModal();
+    renderModal() +
+    renderDetail();
 
   const newHand = root.querySelector('.hand');
   if (newHand) newHand.scrollLeft = scroll;
@@ -718,19 +1129,34 @@ function renderOppBar() {
   </div>`;
 }
 
+/** 移動元に選んでいるユニットの移動情報(無ければnull) */
+function currentMoveInfo() {
+  if (state.moveSel === null) return null;
+  const u = P('p').lanes[state.moveSel];
+  return u ? moveInfo(u) : null;
+}
+
 /** レーン行(side: 'c'=相手, 'p'=自分) */
 function renderRow(side) {
   const pl = P(side);
   const selCard = state.selected !== null ? CARD_MAP[P('p').hand[state.selected]] : null;
+  const mv = side === 'p' && state.phase === 'main' ? currentMoveInfo() : null;
+  const now = Date.now();
   let html = `<div class="row">`;
   for (let i = 0; i < LANE_COUNT; i++) {
     const u = pl.lanes[i];
     const can = side === 'p' && state.phase === 'main' && selCard && !u && selCard.cost <= heatTotal(P('p'));
+    const canMove = mv && mv.targets.includes(i);
     const active = state.activeLane === i ? 'active' : '';
     const attrs = side === 'p' ? `data-act="lane" data-i="${i}"` : '';
-    html += `<div class="cell ${can ? 'can' : ''} ${active}" ${attrs}>`;
+    html += `<div class="cell ${can ? 'can' : ''} ${canMove ? 'can-move' : ''} ${active}" ${attrs}>`;
     if (u) html += renderUnit(u);
+    else if (canMove) html += `<span class="empty">ここへ移動</span>`;
     else html += `<span class="empty">${can ? 'ここに置く' : LANE_NAMES[i] + ' 空き'}</span>`;
+    // 効果名ポップアップ
+    state.popups.filter(p => p.side === side && p.lane === i).forEach((p, k) => {
+      html += `<div class="popup" style="top:${6 + k * 24}px;animation-delay:-${now - p.t}ms">${p.text}</div>`;
+    });
     html += `</div>`;
   }
   return html + `</div>`;
@@ -740,17 +1166,26 @@ function renderRow(side) {
 function renderUnit(u) {
   const card = CARD_MAP[u.id];
   const cls = ['unit', 'side-' + u.side];
-  if (u.sick) cls.push('sick');
+  if (u.sick && !hasFlag(u, 'ignoreDeploy')) cls.push('sick');
   if (u.dying) cls.push('dying');
   if (u.justPlaced) cls.push('placed');
+  if (u.side === 'p' && state.moveSel === u.lane) cls.push('msel');
+  const atk = effAtk(u, facing(u));
   const hpCls = ['hp'];
+  let hpStyle = '';
   if (u.hp < u.maxHp) hpCls.push('dmg');
-  if (u.hit) hpCls.push('hit');
-  return `<div class="${cls.join(' ')}" style="--uc:${card.color}">
+  const since = Date.now() - u.hitAt;
+  if (since < 600) { hpCls.push('hit'); hpStyle = `style="animation-delay:-${since}ms"`; }
+  const tags = [];
+  if (u.numb) tags.push('<span class="u-numb">しびれ</span>');
+  if (u.sick) tags.push(hasFlag(u, 'ignoreDeploy') ? '<span class="u-sick go">即参戦</span>' : '<span class="u-sick">着陣中</span>');
+  const act = u.side === 'p' ? `data-act="unit" data-i="${u.lane}"` : '';
+  return `<div class="${cls.join(' ')}" style="--uc:${card.color}" ${act} data-detail="${u.id}" data-uid="${u.uid}">
     <span class="u-cost">${card.cost}</span>
+    ${hasFlag(u, 'firstStrike') ? '<span class="u-fs">⚡</span>' : ''}
     <div class="u-name">${u.name}</div>
-    <div class="u-stats"><span class="atk">⚔${u.atk}</span><span class="${hpCls.join(' ')}">♥${Math.max(0, u.hp)}</span></div>
-    ${u.sick ? '<div class="u-sick">着陣中</div>' : '<div class="lbl">攻撃 / 体力</div>'}
+    <div class="u-stats"><span class="atk ${atk < u.atk ? 'down' : ''}">⚔${atk}</span><span class="${hpCls.join(' ')}" ${hpStyle}>♥${Math.max(0, u.hp)}</span></div>
+    ${tags.length ? `<div class="tags">${tags.join('')}</div>` : '<div class="lbl">攻撃 / 体力</div>'}
   </div>`;
 }
 
@@ -788,8 +1223,7 @@ function renderMyBar() {
   let pips = '';
   for (let i = 0; i < p.heatMax; i++) pips += `<span class="pip ${i < p.heatBase ? 'on' : ''}"></span>`;
   // 持ち越し・ボーナス分(最大値を超えた分)は別色
-  const extraShown = Math.max(p.heatExtra, 0);
-  for (let i = 0; i < extraShown; i++) pips += `<span class="pip cx on"></span>`;
+  for (let i = 0; i < Math.max(p.heatExtra, 0); i++) pips += `<span class="pip cx on"></span>`;
   const cx = p.heatExtra > 0 ? `<span class="cx">+${p.heatExtra}</span>` : '';
   return `<div class="bar me ${active ? 'active' : ''}">
     <span class="stat heatnum">熱 <b>${p.heatBase}</b>${cx}/${p.heatMax}<span class="pips">${pips}</span></span>
@@ -798,10 +1232,10 @@ function renderMyBar() {
   </div>`;
 }
 
-/** カード1枚のHTML */
+/** カード1枚のHTML(act=null ならタップ動作なし、長押し詳細のみ) */
 function renderCard(id, idx, extraCls = '', act = 'card') {
   const c = CARD_MAP[id];
-  return `<button class="card ${extraCls}" style="--uc:${c.color}" ${act ? `data-act="${act}" data-i="${idx}"` : ''}>
+  return `<button class="card ${extraCls}" style="--uc:${c.color}" data-detail="${id}" ${act ? `data-act="${act}" data-i="${idx}"` : ''}>
     <div class="c-head"><span class="c-cost">${c.cost}</span><span class="c-name">${c.name}</span></div>
     <div class="c-stats"><span class="atk">⚔${c.atk}</span><span class="hp">♥${c.hp}</span></div>
     <div class="c-text">${c.text}</div>
@@ -817,7 +1251,16 @@ function renderHand() {
   if (discarding) {
     note = `<div class="hand-note warn"><span>手札が多すぎます!あと${p.hand.length - HAND_MAX}枚捨ててください</span></div>`;
   } else {
-    note = `<div class="hand-note"><span>手札 ${p.hand.length}/${HAND_MAX}</span><span>${state.selected !== null ? '置くレーンをタップ' : 'カードをタップで選択'}</span></div>`;
+    let hint = 'タップで選択・長押しで詳細';
+    const mv = state.phase === 'main' ? currentMoveInfo() : null;
+    if (mv) {
+      hint = mv.ok
+        ? `<span class="mv">移動先をタップ(熱${mv.cost}${mv.free ? '・回数消費なし' : ''})</span>`
+        : `<span class="ng">移動不可:${mv.reason}</span>`;
+    } else if (state.selected !== null) {
+      hint = '置くレーンをタップ';
+    }
+    note = `<div class="hand-note"><span>手札 ${p.hand.length}/${HAND_MAX}</span><span>${hint}</span></div>`;
   }
   let cards = '';
   p.hand.forEach((id, i) => {
@@ -843,6 +1286,7 @@ function renderControls() {
   let label = 'ターン終了';
   if (state.phase === 'cpu') label = 'CPUが考え中…';
   else if (state.phase === 'clash') label = '衝突中…';
+  else if (state.phase === 'effect') label = '効果処理中…';
   return `<div class="controls"><button class="btn" data-act="end" ${can ? '' : 'disabled'}>${label}</button></div>`;
 }
 
@@ -866,7 +1310,7 @@ function renderModal() {
       <div class="order ${isFirst ? 'p' : 'c'}">あなたは${isFirst ? '先攻' : '後攻'}です</div>
       <p>${isFirst ? '先攻1ターン目は衝突できません' : '後攻1ターン目は熱+1'}</p>
       <div class="mini-hand">${hand}</div>
-      <p>${state.mulliganUsed ? '引き直しました' : '手札を1回だけ引き直せます'}</p>
+      <p>${state.mulliganUsed ? '引き直しました' : '手札を1回だけ引き直せます(長押しで詳細)'}</p>
       <div class="btns">${btns}</div>
     </div></div>`;
   }
@@ -883,17 +1327,83 @@ function renderModal() {
   return '';
 }
 
+/** 長押しで開くカード詳細モーダル */
+function renderDetail() {
+  if (!state.detail) return '';
+  const c = CARD_MAP[state.detail.id];
+  // 場のユニットなら現在の値と状態も表示
+  let u = null;
+  if (state.detail.uid) {
+    ['p', 'c'].forEach(s => P(s).lanes.forEach(x => { if (x && x.uid === state.detail.uid) u = x; }));
+  }
+  let stats, owner = '', tags = [];
+  if (u) {
+    const atk = effAtk(u, facing(u));
+    stats = `<span class="atk ${atk < u.atk ? 'down' : ''}">攻撃 ${atk}${atk !== u.atk ? ` <small>(基本${u.atk})</small>` : ''}</span>
+             <span class="hp">体力 ${Math.max(0, u.hp)}<small>/${u.maxHp}</small></span>`;
+    owner = `${u.side === 'p' ? 'あなた' : 'CPU'}の${LANE_NAMES[u.lane]}レーン`;
+    if (u.sick) tags.push(hasFlag(u, 'ignoreDeploy') ? '<span class="d-tag">即参戦</span>' : '<span class="d-tag sick">着陣中</span>');
+    if (u.numb) tags.push('<span class="d-tag numb">しびれ(次の衝突をスキップ)</span>');
+  } else {
+    stats = `<span class="atk">攻撃 ${c.atk}</span><span class="hp">体力 ${c.hp}</span>`;
+  }
+  if (c.effect && c.effect.firstStrike) tags.push('<span class="d-tag">⚡先制</span>');
+  return `<div class="modal-bg top" data-act="closeDetail"><div class="modal detail" style="--uc:${c.color}">
+    <div class="d-head"><span class="c-cost">${c.cost}</span>
+      <div><div class="d-name">${c.name}</div>${owner ? `<div class="d-owner">${owner}</div>` : ''}</div></div>
+    <div class="d-stats">${stats}</div>
+    ${tags.length ? `<div class="d-tags">${tags.join('')}</div>` : ''}
+    <div class="d-text">${c.desc}</div>
+    <div class="btns"><button class="btn sub" data-act="closeDetail">閉じる</button></div>
+  </div></div>`;
+}
+
 /* =========================================================
-   入力処理(タップ)
+   入力処理(タップ・長押し)
    ========================================================= */
+let lpTimer = null;       // 長押しタイマー
+let lpStart = null;       // 長押し開始位置
+let suppressClick = false; // 長押し直後のクリックを無視する
+
+root.addEventListener('pointerdown', e => {
+  suppressClick = false;
+  const el = e.target.closest('[data-detail]');
+  if (!el || state.detail) return;
+  const info = { id: el.dataset.detail, uid: el.dataset.uid ? Number(el.dataset.uid) : null };
+  lpStart = { x: e.clientX, y: e.clientY };
+  clearTimeout(lpTimer);
+  lpTimer = setTimeout(() => {
+    lpTimer = null;
+    lpStart = null;
+    suppressClick = true;
+    state.detail = info;
+    if (navigator.vibrate) navigator.vibrate(15);
+    render();
+  }, LONG_PRESS_MS);
+});
+root.addEventListener('pointermove', e => {
+  if (!lpStart) return;
+  if (Math.hypot(e.clientX - lpStart.x, e.clientY - lpStart.y) > 10) cancelLongPress();
+});
+function cancelLongPress() { clearTimeout(lpTimer); lpTimer = null; lpStart = null; }
+root.addEventListener('pointerup', cancelLongPress);
+root.addEventListener('pointercancel', cancelLongPress);
+root.addEventListener('contextmenu', e => e.preventDefault());
+
 root.addEventListener('click', e => {
+  if (suppressClick) { suppressClick = false; return; }
   const el = e.target.closest('[data-act]');
   if (!el) return;
   const act = el.dataset.act;
   const i = el.dataset.i !== undefined ? Number(el.dataset.i) : null;
+  if (state.detail) {
+    if (act === 'closeDetail') { state.detail = null; render(); }
+    return;
+  }
   switch (act) {
     case 'card': onTapCard(i); break;
     case 'lane': onTapLane(i); break;
+    case 'unit': onTapUnit(i); break;
     case 'end':  if (state.phase === 'main') endTurn('p'); break;
     case 'discard': confirmDiscard(); break;
     case 'mull': mulligan(); break;
@@ -910,19 +1420,48 @@ function onTapCard(i) {
     return;
   }
   if (state.phase !== 'main') return;
+  state.moveSel = null;
   if (state.selected === i) { state.selected = null; render(); return; }
   const card = CARD_MAP[P('p').hand[i]];
-  if (card.cost > heatTotal(P('p'))) { showToast('熱が足りません'); return; }
-  if (P('p').lanes.every(u => u)) { showToast('空いているレーンがありません'); return; }
+  if (card.cost > heatTotal(P('p'))) { showToast('熱が足りません'); render(); return; }
+  if (P('p').lanes.every(u => u)) { showToast('空いているレーンがありません'); render(); return; }
   state.selected = i;
   render();
 }
 
-/** 自分のレーンをタップ:選択中のカードを配置 */
-function onTapLane(lane) {
-  if (state.phase !== 'main' || state.selected === null) return;
+/** 自分のユニットをタップ:移動元として選択/選択解除 */
+function onTapUnit(lane) {
+  if (state.phase !== 'main') return;
+  state.selected = null;
+  if (state.moveSel === lane) { state.moveSel = null; render(); return; }
+  state.moveSel = lane;
+  const info = currentMoveInfo();
+  if (info && !info.ok) showToast('移動不可:' + info.reason);
+  render();
+}
+
+/** 自分のレーンをタップ:選択中のカードを配置/選択中のユニットを移動 */
+async function onTapLane(lane) {
+  if (state.phase !== 'main') return;
+  // 移動
+  if (state.moveSel !== null) {
+    const from = state.moveSel;
+    state.moveSel = null;
+    const info = moveInfo(P('p').lanes[from]);
+    if (info.targets.includes(lane)) moveUnit('p', from, lane);
+    render();
+    return;
+  }
+  // 配置
+  if (state.selected === null) return;
   if (P('p').lanes[lane]) { showToast('そのレーンは埋まっています'); return; }
-  if (placeUnit('p', state.selected, lane)) state.selected = null;
+  const gid = state.gameId;
+  const idx = state.selected;
+  state.selected = null;
+  state.phase = 'effect';
+  await placeUnit('p', idx, lane);
+  if (gid !== state.gameId || isOver()) return;
+  state.phase = 'main';
   render();
 }
 
