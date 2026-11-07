@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d1220">
+<meta name="mobile-web-app-capable" content="yes">
+<title>オシキリビースト</title>
+<style>
+:root{
+  --bg:#0d1220;
+  --panel:#161d30;
+  --panel2:#1e2740;
+  --line:#2c3758;
+  --text:#e8ecf7;
+  --sub:#93a0c2;
+  --p:#3fa9ff;        /* プレイヤー側の色 */
+  --p-dark:#1b4f80;
+  --c:#ff5a5a;        /* CPU側の色 */
+  --c-dark:#7a2430;
+  --heat:#ff9a2e;     /* 熱 */
+  --carry:#c6f04a;    /* 持ち越し・ボーナス熱 */
+  --gold:#ffd447;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
+body{
+  font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif;
+  font-size:13px;line-height:1.3;
+  touch-action:manipulation;user-select:none;-webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;
+}
+button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
+
+/* ===== 全体レイアウト ===== */
+#app{
+  height:100vh;height:100dvh;max-width:480px;margin:0 auto;
+  display:flex;flex-direction:column;gap:6px;
+  padding:calc(6px + env(safe-area-inset-top)) 8px calc(6px + env(safe-area-inset-bottom));
+}
+.bar{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:6px 10px;min-height:38px;font-size:12px;flex:none;
+}
+.bar .who{font-weight:700;font-size:13px}
+.bar.opp .who{color:var(--c)}
+.bar.me .who{color:var(--p)}
+.bar .stat{color:var(--sub);white-space:nowrap}
+.bar .stat b{color:var(--text);font-size:14px}
+.bar.active.opp{box-shadow:0 0 0 2px var(--c) inset}
+.bar.active.me{box-shadow:0 0 0 2px var(--p) inset}
+.heatnum b{color:var(--heat)}
+.heatnum .cx{color:var(--carry);font-weight:700;font-size:13px}
+.pips{display:inline-flex;gap:2px;vertical-align:middle;margin-left:4px}
+.pip{width:7px;height:12px;border-radius:2px;background:#323b55}
+.pip.on{background:var(--heat)}
+.pip.cx{background:#3c4a25}
+.pip.cx.on{background:var(--carry)}
+
+/* ===== レーン ===== */
+.row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;flex:1 1 0;min-height:92px}
+.cell{
+  position:relative;border-radius:12px;border:1px dashed var(--line);
+  background:rgba(255,255,255,.02);
+  display:flex;align-items:stretch;justify-content:stretch;min-height:44px;
+  transition:box-shadow .15s;
+}
+.cell .empty{margin:auto;color:#4b5678;font-size:12px}
+.cell.can{border:2px solid var(--gold);background:rgba(255,212,71,.08);animation:glow 1s ease-in-out infinite alternate}
+.cell.can .empty{color:var(--gold);font-weight:700}
+.cell.active{box-shadow:0 0 0 3px #fff,0 0 18px 4px rgba(255,255,255,.55)}
+@keyframes glow{from{box-shadow:0 0 0 0 rgba(255,212,71,.2)}to{box-shadow:0 0 14px 2px rgba(255,212,71,.55)}}
+
+.unit{
+  flex:1;border-radius:11px;padding:6px 6px 5px;
+  display:flex;flex-direction:column;justify-content:space-between;align-items:center;
+  background:linear-gradient(160deg,var(--uc) -40%,var(--panel2) 55%);
+  border:2px solid var(--side);position:relative;overflow:hidden;
+}
+.unit.side-p{--side:var(--p)}
+.unit.side-c{--side:var(--c)}
+.unit .u-name{font-weight:700;font-size:13px;text-align:center;line-height:1.15;word-break:keep-all}
+.unit .u-cost{position:absolute;top:3px;left:4px;font-size:12px;color:var(--heat);font-weight:700}
+.unit .u-stats{display:flex;gap:10px;font-size:20px;font-weight:800;line-height:1}
+.unit .atk{color:#ffb35c}
+.unit .hp{color:#7dffa8}
+.unit .hp.dmg{color:#ff8a8a}
+.unit .hp.hit{animation:hit .6s steps(2) 0s 1}
+.unit .lbl{font-size:12px;color:var(--sub)}
+@keyframes hit{0%,100%{color:#ff2a2a;transform:scale(1.25)}50%{color:#fff;transform:scale(1)}}
+.unit.sick{filter:saturate(.55) brightness(.85)}
+.unit .u-sick{
+  font-size:12px;font-weight:700;color:#1a1300;background:var(--gold);
+  border-radius:8px;padding:1px 8px;
+}
+.unit.dying{animation:die .38s ease-in forwards}
+@keyframes die{to{transform:scale(.1) rotate(25deg);opacity:0}}
+.unit.placed{animation:pop .25s ease-out}
+@keyframes pop{from{transform:scale(.6);opacity:.2}to{transform:scale(1);opacity:1}}
+
+/* ===== おしあいゲージ ===== */
+.gauge{flex:none;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 10px 8px}
+.g-top{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:5px}
+.g-top .l{color:var(--c);font-weight:700}
+.g-top .r{color:var(--p);font-weight:700}
+.g-top .turn{font-weight:700;font-size:13px}
+.g-top .turn.p{color:var(--p)}
+.g-top .turn.c{color:var(--c)}
+.g-track{
+  position:relative;height:22px;border-radius:11px;overflow:visible;
+  background:linear-gradient(90deg,var(--c-dark) 0%,#2a2f42 50%,var(--p-dark) 100%);
+}
+.g-tick{position:absolute;top:4px;bottom:4px;width:1px;background:rgba(255,255,255,.18)}
+.g-tick.mid{top:0;bottom:0;width:2px;background:rgba(255,255,255,.7)}
+.g-fill{position:absolute;top:5px;bottom:5px;border-radius:6px}
+.g-fill.p{background:var(--p)}
+.g-fill.c{background:var(--c)}
+.g-marker{
+  position:absolute;top:-6px;width:34px;height:34px;margin-left:-17px;border-radius:50%;
+  background:#fff;color:#111;font-weight:900;font-size:15px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.6);border:3px solid #888;
+}
+.g-marker.p{border-color:var(--p)}
+.g-marker.c{border-color:var(--c)}
+
+/* ===== 手札 ===== */
+.hand-wrap{flex:none;position:relative}
+.hand-note{font-size:12px;color:var(--sub);margin:0 2px 3px;display:flex;justify-content:space-between}
+.hand-note.warn{color:var(--gold);font-weight:700}
+.hand{
+  display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding:6px 2px 6px;
+  -webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;scrollbar-width:none;
+}
+.hand::-webkit-scrollbar{display:none}
+.hand .empty-hand{color:#4b5678;font-size:12px;padding:40px 8px}
+.card{
+  flex:none;width:98px;min-height:138px;border-radius:10px;padding:5px 6px 6px;
+  background:linear-gradient(170deg,var(--uc) -30%,var(--panel2) 45%);
+  border:2px solid #3b4668;position:relative;text-align:left;scroll-snap-align:start;
+  display:flex;flex-direction:column;gap:3px;transition:transform .12s,border-color .12s;
+}
+.card .c-head{display:flex;align-items:center;gap:4px}
+.card .c-cost{
+  flex:none;width:22px;height:22px;border-radius:50%;background:var(--heat);color:#1a0e00;
+  font-weight:900;font-size:13px;display:flex;align-items:center;justify-content:center;
+}
+.card .c-name{font-weight:700;font-size:12px;line-height:1.1;word-break:keep-all}
+.card .c-stats{display:flex;justify-content:space-around;font-weight:800;font-size:16px}
+.card .c-stats .atk{color:#ffb35c}
+.card .c-stats .hp{color:#7dffa8}
+.card .c-text{font-size:12px;color:#c3cbe3;line-height:1.25;flex:1;background:rgba(0,0,0,.25);border-radius:6px;padding:3px 4px}
+.card.poor{filter:brightness(.45) grayscale(.5)}
+.card.sel{border-color:var(--gold);transform:translateY(-5px);box-shadow:0 0 12px rgba(255,212,71,.6)}
+.card.dsel{border-color:var(--c);transform:translateY(-5px);box-shadow:0 0 12px rgba(255,90,90,.7)}
+.card.mini{width:76px;min-height:110px}
+.card.mini .c-text{display:none}
+
+/* ===== 操作 ===== */
+.controls{flex:none;display:flex;gap:8px}
+.btn{
+  flex:1;min-height:48px;border-radius:12px;font-weight:800;font-size:16px;
+  background:linear-gradient(180deg,#3fa9ff,#1f6fc0);color:#fff;
+  box-shadow:0 3px 0 #0f3d6b;
+}
+.btn:active{transform:translateY(2px);box-shadow:0 1px 0 #0f3d6b}
+.btn:disabled{background:#2e3650;color:#6e7896;box-shadow:none}
+.btn.danger{background:linear-gradient(180deg,#ff6a6a,#c03030);box-shadow:0 3px 0 #6b1414}
+.btn.sub{background:#2e3650;box-shadow:0 3px 0 #161b2a}
+
+/* ===== ログ ===== */
+.log{
+  flex:none;background:#0a0e19;border:1px solid var(--line);border-radius:10px;
+  padding:5px 8px;height:calc(5 * 16px + 12px);overflow:hidden;font-size:12px;line-height:16px;
+}
+.log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--sub)}
+.log div.p{color:#9fd2ff}
+.log div.c{color:#ffadad}
+.log div.sys{color:var(--gold)}
+.log div:last-child{font-weight:700}
+
+/* ===== モーダル ===== */
+.modal-bg{
+  position:fixed;inset:0;background:rgba(5,8,15,.78);z-index:50;
+  display:flex;align-items:center;justify-content:center;padding:16px;
+  animation:fade .25s ease-out both;
+}
+.modal-bg.late{animation-delay:.6s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal{
+  width:100%;max-width:340px;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:18px 16px;text-align:center;
+}
+.modal h1{font-size:22px;margin-bottom:6px}
+.modal h2{font-size:28px;margin:4px 0 8px}
+.modal p{color:var(--sub);font-size:13px;margin-bottom:10px}
+.modal .order{font-size:18px;font-weight:800;margin:6px 0 10px}
+.modal .order.p{color:var(--p)}
+.modal .order.c{color:var(--c)}
+.modal .mini-hand{display:flex;gap:4px;justify-content:center;margin:8px 0 14px}
+.modal .btns{display:flex;gap:8px}
+.win{color:var(--p)}
+.lose{color:var(--c)}
+.draw{color:var(--gold)}
+
+/* ===== トースト ===== */
+#toast{
+  position:fixed;left:50%;bottom:30%;transform:translateX(-50%);z-index:60;
+  background:rgba(0,0,0,.85);color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;
+  pointer-events:none;opacity:0;transition:opacity .2s;
+}
+#toast.show{opacity:1}
+
+/* ===== 横向き警告 ===== */
+#rotate{
+  display:none;position:fixed;inset:0;z-index:100;background:var(--bg);
+  align-items:center;justify-content:center;font-size:18px;font-weight:700;text-align:center;padding:20px;
+}
+@media (orientation:landscape) and (max-height:600px){
+  #rotate{display:flex}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast"></div>
+<div id="rotate">📱 縦向きにしてください</div>
+
+<script>
+'use strict';
+
+/* =========================================================
+   定数
+   ========================================================= */
+const GAUGE_MAX        = 8;   // おしあいゲージ上限(±8で決着)
+const TURNS_PER_PLAYER = 8;   // 各プレイヤーのターン数
+const HEAT_CAP         = 7;   // 熱の最大値の上限
+const HEAT_START       = 2;   // 自分の1ターン目の熱の最大値
+const CARRY_MAX        = 2;   // 熱の持ち越し上限
+const HAND_MAX         = 6;   // 手札上限
+const DECK_SIZE        = 20;  // デッキ枚数
+const START_HAND       = 4;   // 初期手札
+const SECOND_BONUS     = 1;   // 後攻1ターン目の熱ボーナス
+const LANE_COUNT       = 3;   // レーン数
+const CLASH_INTERVAL   = 400; // 衝突1レーンごとの間隔(ms)
+const CPU_INTERVAL     = 500; // CPUの1手ごとの間隔(ms)
+const LOG_LINES        = 5;   // 表示するログ行数
+const LANE_NAMES       = ['左', '中', '右'];
+
+/* =========================================================
+   カードデータ
+   copies: デッキに入れる枚数(0 = 定義のみ / STEP2用)
+   effect: 将来ここに効果関数を差し込む。
+     例) effect: { onPlay(ctx){...}, onClash(ctx){...}, onSurvive(ctx){...} }
+     STEP1では全てnull(テキスト表示のみ)
+   ========================================================= */
+const CARDS = [
+  { id: 'homurabion',  name: 'ホムラビオン',   cost: 1, atk: 1, hp: 2, copies: 2, color: '#ff6a2e', text: '本気モードになると攻撃+2',           effect: null },
+  { id: 'hinokorou',   name: 'ヒノコロウ',     cost: 1, atk: 2, hp: 1, copies: 2, color: '#ff3b3b', text: '速攻役',                             effect: null },
+  { id: 'kiramedaka',  name: 'キラメダカ',     cost: 2, atk: 1, hp: 3, copies: 2, color: '#ffe14a', text: '場に出したときカードを1枚引く',       effect: null },
+  { id: 'awagamet',    name: 'アワガメット',   cost: 2, atk: 0, hp: 5, copies: 2, color: '#4ad2ff', text: '壁役',                               effect: null },
+  { id: 'borukitsune', name: 'ボルキツネ',     cost: 3, atk: 2, hp: 3, copies: 2, color: '#ffc02e', text: '衝突時、隣レーンの敵にも1ダメージ',   effect: null },
+  { id: 'sabakuroko',  name: 'サバクロコ',     cost: 3, atk: 3, hp: 3, copies: 2, color: '#c8a050', text: '衝突で生き残るとごきげん+2',          effect: null },
+  { id: 'nokufukurou', name: 'ノクフクロウ',   cost: 3, atk: 2, hp: 2, copies: 2, color: '#9a6aff', text: '移動に熱を使わない',                  effect: null },
+  { id: 'shizukurake', name: 'シズクラーケ',   cost: 4, atk: 2, hp: 4, copies: 2, color: '#3a7cff', text: '向かいの敵の攻撃-1',                  effect: null },
+  { id: 'benomukade',  name: 'ベノムカデ',     cost: 4, atk: 2, hp: 4, copies: 2, color: '#a0ff3a', text: 'ダメージを与えた敵は次の衝突で攻撃できない', effect: null },
+  { id: 'tsurarapto',  name: 'ツララプトル',   cost: 5, atk: 4, hp: 4, copies: 1, color: '#9af0ff', text: '出したターンから衝突に参加できる',    effect: null },
+  { id: 'ikazuchita',  name: 'イカヅチーター', cost: 5, atk: 5, hp: 3, copies: 1, color: '#fff04a', text: '衝突で必ず先に攻撃する',              effect: null },
+  // ---- STEP2用(デッキには入れない) ----
+  { id: 'yukihyouga',  name: 'ユキヒョウガ',   cost: 6, atk: 4, hp: 6, copies: 0, color: '#d8f4ff', text: '敵を倒すたびにゲージを1押す',         effect: null },
+  { id: 'gotsuinodon', name: 'ゴツイノドン',   cost: 6, atk: 3, hp: 8, copies: 0, color: '#a08060', text: '場に出したときゲージを1押す',         effect: null },
+  { id: 'tenkujira',   name: 'テンクウジラ',   cost: 7, atk: 5, hp: 8, copies: 0, color: '#6ab0ff', text: '場に出したとき敵全員に1ダメージ',     effect: null },
+  { id: 'hikaryuga',   name: 'ヒカリュウガ',   cost: 7, atk: 6, hp: 6, copies: 0, color: '#fff8c0', text: '本気モード中、衝突のたびにゲージを2押す', effect: null },
+];
+const CARD_MAP = Object.fromEntries(CARDS.map(c => [c.id, c]));
+
+/* =========================================================
+   ゲーム状態(1つのstateオブジェクトで管理)
+   ========================================================= */
+let state = null;
+
+/** プレイヤー1人分の初期データを作る(side: 'p'=プレイヤー / 'c'=CPU) */
+function createPlayer(side) {
+  return {
+    side,
+    deck: [],          // カードIDの配列(末尾が山札の上)
+    hand: [],          // カードIDの配列
+    lanes: Array(LANE_COUNT).fill(null), // ユニット or null
+    heatMax: 0,        // 今ターンの熱の最大値
+    heatBase: 0,       // 残り熱(通常分)
+    heatExtra: 0,      // 残り熱(持ち越し・後攻ボーナス分)
+    carry: 0,          // 次ターンへ持ち越す熱
+    turn: 0,           // 自分のターン数
+  };
+}
+
+/* =========================================================
+   ユーティリティ
+   ========================================================= */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const P = side => state.players[side];
+const opp = side => (side === 'p' ? 'c' : 'p');
+const sideName = side => (side === 'p' ? 'あなた' : 'CPU');
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const heatTotal = pl => pl.heatBase + pl.heatExtra;
+
+/** 配列をシャッフル(Fisher-Yates) */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/** CARDSのcopiesからデッキ(20枚)を組み立てる */
+function buildDeck() {
+  const deck = [];
+  CARDS.forEach(c => { for (let i = 0; i < c.copies; i++) deck.push(c.id); });
+  if (deck.length !== DECK_SIZE) console.warn('デッキ枚数が' + DECK_SIZE + '枚ではありません: ' + deck.length);
+  return shuffle(deck);
+}
+
+/** バトルログに1行追加(cls: 'p' | 'c' | 'sys' | '') */
+function addLog(text, cls = '') {
+  state.log.push({ text, cls });
+  if (state.log.length > 50) state.log.shift();
+}
+
+/** 画面下部に短いメッセージを出す */
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1200);
+}
+
+/** 効果フック呼び出し口(STEP1ではeffectが全てnullなので何もしない) */
+function runEffect(unit, hook, ctx) {
+  const card = CARD_MAP[unit.id];
+  if (card.effect && typeof card.effect[hook] === 'function') {
+    card.effect[hook]({ state, unit, ...ctx });
+  }
+}
+
+/* =========================================================
+   ゲーム進行
+   ========================================================= */
+
+/** 新しい試合を開始する(デッキ作成・初期手札・先攻後攻決定) */
+function newGame() {
+  const gameId = state ? state.gameId + 1 : 1;
+  state = {
+    gameId,                 // 再戦時に古い非同期処理を止めるためのID
+    phase: 'mulligan',      // mulligan | main | cpu | clash | discard | over
+    mulliganUsed: false,
+    first: Math.random() < 0.5 ? 'p' : 'c',
+    turnSide: null,
+    gauge: 0,
+    selected: null,         // 選択中の手札インデックス
+    discardSel: null,       // 捨てる候補の手札インデックス
+    activeLane: null,       // 衝突処理中のレーン
+    log: [],
+    result: null,
+    uid: 0,
+    players: { p: createPlayer('p'), c: createPlayer('c') },
+  };
+  gaugeVis = 0;
+  ['p', 'c'].forEach(side => {
+    const pl = P(side);
+    pl.deck = buildDeck();
+    for (let i = 0; i < START_HAND; i++) draw(side, true);
+  });
+  addLog(`試合開始!${sideName(state.first)}が先攻`, 'sys');
+  render();
+}
+
+/** 引き直し(手札を全部デッキに戻してシャッフルし、4枚引き直す) */
+function mulligan() {
+  if (state.phase !== 'mulligan' || state.mulliganUsed) return;
+  const pl = P('p');
+  pl.deck.push(...pl.hand);
+  pl.hand = [];
+  shuffle(pl.deck);
+  for (let i = 0; i < START_HAND; i++) draw('p', true);
+  state.mulliganUsed = true;
+  addLog('あなたは手札を引き直した', 'p');
+  render();
+}
+
+/** 引き直し確認を終えて最初のターンを始める */
+function beginMatch() {
+  if (state.phase !== 'mulligan') return;
+  startTurn(state.first);
+}
+
+/** 1枚ドロー(デッキが0枚なら引かない) */
+function draw(side, silent = false) {
+  const pl = P(side);
+  if (pl.deck.length === 0) {
+    if (!silent) addLog(`${sideName(side)}の山札が無いので引けない`, side);
+    return false;
+  }
+  pl.hand.push(pl.deck.pop());
+  return true;
+}
+
+/** ターン開始:熱の最大値決定→熱回復(+持ち越し)→1枚ドロー */
+async function startTurn(side) {
+  state.turnSide = side;
+  state.selected = null;
+  state.discardSel = null;
+  const pl = P(side);
+  pl.turn++;
+  pl.heatMax = Math.min(HEAT_START + (pl.turn - 1), HEAT_CAP);
+  pl.heatBase = pl.heatMax;
+  const bonus = (side !== state.first && pl.turn === 1) ? SECOND_BONUS : 0;
+  pl.heatExtra = pl.carry + bonus;
+  pl.carry = 0;
+  // 前のターンに置いたユニットの「着陣中」を解除
+  pl.lanes.forEach(u => { if (u) u.sick = false; });
+  addLog(`── ${sideName(side)}のターン ${pl.turn}/${TURNS_PER_PLAYER} ──`, 'sys');
+  draw(side);
+
+  if (side === 'p') {
+    state.phase = 'main';
+    render();
+  } else {
+    state.phase = 'cpu';
+    render();
+    await cpuTurn();
+  }
+}
+
+/** 熱を支払う(持ち越し・ボーナス分から先に使う) */
+function spendHeat(pl, cost) {
+  const fromExtra = Math.min(pl.heatExtra, cost);
+  pl.heatExtra -= fromExtra;
+  pl.heatBase -= (cost - fromExtra);
+}
+
+/** 手札のユニットをレーンに配置する。成功したらtrue */
+function placeUnit(side, handIdx, lane) {
+  const pl = P(side);
+  const id = pl.hand[handIdx];
+  if (id === undefined || pl.lanes[lane]) return false;
+  const card = CARD_MAP[id];
+  if (card.cost > heatTotal(pl)) return false;
+  spendHeat(pl, card.cost);
+  pl.hand.splice(handIdx, 1);
+  const unit = {
+    uid: ++state.uid, id: card.id, name: card.name,
+    atk: card.atk, hp: card.hp, maxHp: card.hp,
+    side, sick: true,      // sick = 着陣中(このターンは衝突しない)
+    hit: false, dying: false, justPlaced: true,
+  };
+  pl.lanes[lane] = unit;
+  addLog(`${sideName(side)}は${card.name}を${LANE_NAMES[lane]}レーンに置いた`, side);
+  runEffect(unit, 'onPlay', { lane });
+  return true;
+}
+
+/** ゲージを動かす(+はプレイヤー側、-はCPU側) */
+function pushGauge(amount) {
+  state.gauge = Math.max(-GAUGE_MAX, Math.min(GAUGE_MAX, state.gauge + amount));
+  animateGauge();
+}
+
+/** 勝敗判定(ゲージ±8)。決着したらtrue */
+function checkWin() {
+  if (state.gauge >= GAUGE_MAX) { endGame('p', 'ゲージを押し切った!'); return true; }
+  if (state.gauge <= -GAUGE_MAX) { endGame('c', 'ゲージを押し切られた…'); return true; }
+  return false;
+}
+
+/** 8ターンずつ終了時の判定 */
+function judgeByGauge() {
+  const g = state.gauge;
+  const reason = `${TURNS_PER_PLAYER}ターン終了・ゲージ ${g > 0 ? '+' : ''}${g}`;
+  if (g > 0) endGame('p', reason);
+  else if (g < 0) endGame('c', reason);
+  else endGame('draw', reason);
+}
+
+/** 試合終了 */
+function endGame(winner, reason) {
+  state.phase = 'over';
+  state.activeLane = null;
+  state.result = { winner, reason };
+  addLog(winner === 'draw' ? '引き分け!' : `${sideName(winner)}の勝利!`, 'sys');
+  render();
+}
+
+/** 1レーン分の衝突処理(ターンプレイヤーのユニットだけが衝突を起こす) */
+async function resolveClash(side, lane) {
+  const gid = state.gameId;
+  const me = P(side), op = P(opp(side));
+  const a = me.lanes[lane];
+  if (!a || a.sick) return; // 不在 or 着陣中は衝突しない
+
+  state.activeLane = lane;
+  render();
+  await sleep(150);
+  if (gid !== state.gameId) return;
+
+  const d = op.lanes[lane];
+  if (d) {
+    // 向かいに敵がいる:お互いに攻撃値ぶんのダメージを同時に与える
+    runEffect(a, 'onClash', { lane, target: d });
+    const toD = a.atk, toA = d.atk;
+    d.hp -= toD;
+    a.hp -= toA;
+    d.hit = toD > 0;
+    a.hit = toA > 0;
+    addLog(`${a.name}と${d.name}が衝突!(${toD}/${toA}ダメージ)`, side);
+    const dead = [a, d].filter(u => u.hp <= 0);
+    dead.forEach(u => { u.dying = true; });
+    render();
+    await sleep(CLASH_INTERVAL);
+    if (gid !== state.gameId) return;
+    a.hit = d.hit = false;
+    if (dead.length === 2) addLog(`相打ち!${a.name}と${d.name}は破壊された`, 'sys');
+    else if (dead.length === 1) addLog(`${dead[0].name}は破壊された`, dead[0].side === 'p' ? 'c' : 'p');
+    if (a.hp <= 0) me.lanes[lane] = null;
+    if (d.hp <= 0) op.lanes[lane] = null;
+  } else {
+    // 向かいが空:攻撃値ぶんゲージを相手側へ押す
+    const dir = side === 'p' ? 1 : -1;
+    pushGauge(dir * a.atk);
+    addLog(`${a.name}がゲージを${a.atk}押した`, side);
+    render();
+    await sleep(CLASH_INTERVAL);
+    if (gid !== state.gameId) return;
+  }
+  state.activeLane = null;
+  render();
+  checkWin();
+}
+
+/** ターン終了処理:衝突→手札上限→熱持ち越し→相手のターンへ */
+async function endTurn(side) {
+  const gid = state.gameId;
+  state.phase = 'clash';
+  state.selected = null;
+  render();
+  const pl = P(side);
+
+  // 衝突(先攻の1ターン目は衝突しない)
+  if (side === state.first && pl.turn === 1) {
+    addLog('先攻1ターン目は衝突なし', 'sys');
+    render();
+    await sleep(300);
+  } else {
+    for (let lane = 0; lane < LANE_COUNT; lane++) {
+      await resolveClash(side, lane);
+      if (gid !== state.gameId || state.phase === 'over') return;
+    }
+  }
+  state.activeLane = null;
+
+  // 手札上限チェック
+  if (pl.hand.length > HAND_MAX) {
+    if (side === 'p') {
+      state.phase = 'discard';
+      state.discardSel = null;
+      render();
+      await new Promise(resolve => { discardResolver = resolve; });
+      if (gid !== state.gameId) return;
+    } else {
+      cpuDiscard();
+    }
+  }
+
+  // 熱の持ち越し(最大2)
+  pl.carry = Math.min(heatTotal(pl), CARRY_MAX);
+
+  // 8ターンずつ終了で判定
+  if (P('p').turn >= TURNS_PER_PLAYER && P('c').turn >= TURNS_PER_PLAYER) {
+    judgeByGauge();
+    return;
+  }
+  render();
+  await sleep(350);
+  if (gid !== state.gameId) return;
+  startTurn(opp(side));
+}
+
+/* ---------- 手札を捨てる処理 ---------- */
+let discardResolver = null;
+
+/** プレイヤーが選んだカードを捨てる */
+function confirmDiscard() {
+  if (state.phase !== 'discard' || state.discardSel === null) return;
+  const pl = P('p');
+  const [id] = pl.hand.splice(state.discardSel, 1);
+  addLog(`あなたは${CARD_MAP[id].name}を捨てた`, 'p');
+  state.discardSel = null;
+  if (pl.hand.length <= HAND_MAX) {
+    state.phase = 'clash'; // 次ターンへ進むまで操作不可
+    render();
+    const r = discardResolver; discardResolver = null;
+    if (r) r();
+  } else {
+    render();
+  }
+}
+
+/** CPUは一番コストが低いカードから捨てる */
+function cpuDiscard() {
+  const pl = P('c');
+  while (pl.hand.length > HAND_MAX) {
+    let minIdx = 0;
+    pl.hand.forEach((id, i) => { if (CARD_MAP[id].cost < CARD_MAP[pl.hand[minIdx]].cost) minIdx = i; });
+    const [id] = pl.hand.splice(minIdx, 1);
+    addLog(`CPUは${CARD_MAP[id].name}を捨てた`, 'c');
+  }
+}
+
+/* =========================================================
+   CPU(STEP1:ランダム配置)
+   ========================================================= */
+/** 熱の範囲内で置けるユニットをランダムな空きレーンに置けるだけ置く */
+async function cpuTurn() {
+  const gid = state.gameId;
+  const pl = P('c');
+  await sleep(CPU_INTERVAL);
+  while (gid === state.gameId) {
+    const empty = [];
+    for (let i = 0; i < LANE_COUNT; i++) if (!pl.lanes[i]) empty.push(i);
+    const playable = pl.hand
+      .map((id, idx) => ({ id, idx }))
+      .filter(x => CARD_MAP[x.id].cost <= heatTotal(pl));
+    if (!empty.length || !playable.length) break;
+    placeUnit('c', pick(playable).idx, pick(empty));
+    render();
+    await sleep(CPU_INTERVAL);
+  }
+  if (gid !== state.gameId) return;
+  await endTurn('c');
+}
+
+/* =========================================================
+   ゲージのアニメーション(render()でDOMが作り直されても滑らかに動かす)
+   ========================================================= */
+let gaugeVis = 0;      // 画面上に表示しているゲージ位置(小数)
+let gaugeTween = null; // {from, to, start, dur}
+
+const gaugePct = v => ((v + GAUGE_MAX) / (GAUGE_MAX * 2)) * 100;
+
+/** ゲージ表示を現在値へ向けてアニメーションさせる */
+function animateGauge() {
+  gaugeTween = { from: gaugeVis, to: state.gauge, start: performance.now(), dur: 450 };
+  requestAnimationFrame(gaugeStep);
+}
+function gaugeStep(now) {
+  if (!gaugeTween) return;
+  const t = Math.min(1, (now - gaugeTween.start) / gaugeTween.dur);
+  const e = 1 - Math.pow(1 - t, 3);
+  gaugeVis = gaugeTween.from + (gaugeTween.to - gaugeTween.from) * e;
+  applyGaugeDom();
+  if (t < 1) requestAnimationFrame(gaugeStep);
+  else gaugeTween = null;
+}
+/** ゲージのマーカー・塗りを現在の表示値で更新 */
+function applyGaugeDom() {
+  const marker = document.getElementById('g-marker');
+  const fill = document.getElementById('g-fill');
+  if (!marker || !fill) return;
+  const v = gaugeVis;
+  marker.style.left = gaugePct(v) + '%';
+  if (v >= 0) { fill.className = 'g-fill p'; fill.style.left = '50%'; fill.style.width = (gaugePct(v) - 50) + '%'; }
+  else { fill.className = 'g-fill c'; fill.style.left = gaugePct(v) + '%'; fill.style.width = (50 - gaugePct(v)) + '%'; }
+}
+
+/* =========================================================
+   描画(毎回画面を作り直す)
+   ========================================================= */
+const root = document.getElementById('app');
+
+/** 画面全体を描画する */
+function render() {
+  // 手札の横スクロール位置を保持
+  const handEl = root.querySelector('.hand');
+  const scroll = handEl ? handEl.scrollLeft : 0;
+
+  root.innerHTML =
+    renderOppBar() +
+    renderRow('c') +
+    renderGauge() +
+    renderRow('p') +
+    renderMyBar() +
+    renderHand() +
+    renderControls() +
+    renderLog() +
+    renderModal();
+
+  const newHand = root.querySelector('.hand');
+  if (newHand) newHand.scrollLeft = scroll;
+  applyGaugeDom();
+
+  // 一度だけ再生するアニメーションのフラグを下ろす
+  ['p', 'c'].forEach(s => P(s).lanes.forEach(u => { if (u) u.justPlaced = false; }));
+}
+
+/** 相手情報バー */
+function renderOppBar() {
+  const c = P('c');
+  const active = state.turnSide === 'c' && state.phase !== 'over' && state.phase !== 'mulligan';
+  return `<div class="bar opp ${active ? 'active' : ''}">
+    <span class="who">CPU</span>
+    <span class="stat heatnum">熱 <b>${c.heatBase}</b>${c.heatExtra > 0 ? `<span class="cx">+${c.heatExtra}</span>` : ''}/${c.heatMax}</span>
+    <span class="stat">手札 <b>${c.hand.length}</b></span>
+    <span class="stat">山札 <b>${c.deck.length}</b></span>
+    <span class="stat">${c.turn}/${TURNS_PER_PLAYER}</span>
+  </div>`;
+}
+
+/** レーン行(side: 'c'=相手, 'p'=自分) */
+function renderRow(side) {
+  const pl = P(side);
+  const selCard = state.selected !== null ? CARD_MAP[P('p').hand[state.selected]] : null;
+  let html = `<div class="row">`;
+  for (let i = 0; i < LANE_COUNT; i++) {
+    const u = pl.lanes[i];
+    const can = side === 'p' && state.phase === 'main' && selCard && !u && selCard.cost <= heatTotal(P('p'));
+    const active = state.activeLane === i ? 'active' : '';
+    const attrs = side === 'p' ? `data-act="lane" data-i="${i}"` : '';
+    html += `<div class="cell ${can ? 'can' : ''} ${active}" ${attrs}>`;
+    if (u) html += renderUnit(u);
+    else html += `<span class="empty">${can ? 'ここに置く' : LANE_NAMES[i] + ' 空き'}</span>`;
+    html += `</div>`;
+  }
+  return html + `</div>`;
+}
+
+/** マス内のユニット表示 */
+function renderUnit(u) {
+  const card = CARD_MAP[u.id];
+  const cls = ['unit', 'side-' + u.side];
+  if (u.sick) cls.push('sick');
+  if (u.dying) cls.push('dying');
+  if (u.justPlaced) cls.push('placed');
+  const hpCls = ['hp'];
+  if (u.hp < u.maxHp) hpCls.push('dmg');
+  if (u.hit) hpCls.push('hit');
+  return `<div class="${cls.join(' ')}" style="--uc:${card.color}">
+    <span class="u-cost">${card.cost}</span>
+    <div class="u-name">${u.name}</div>
+    <div class="u-stats"><span class="atk">⚔${u.atk}</span><span class="${hpCls.join(' ')}">♥${Math.max(0, u.hp)}</span></div>
+    ${u.sick ? '<div class="u-sick">着陣中</div>' : '<div class="lbl">攻撃 / 体力</div>'}
+  </div>`;
+}
+
+/** おしあいゲージ */
+function renderGauge() {
+  let ticks = '';
+  for (let v = -GAUGE_MAX + 1; v < GAUGE_MAX; v++) {
+    ticks += `<div class="g-tick ${v === 0 ? 'mid' : ''}" style="left:${gaugePct(v)}%"></div>`;
+  }
+  const g = state.gauge;
+  const mCls = g > 0 ? 'p' : g < 0 ? 'c' : '';
+  let turnTxt = '', turnCls = '';
+  if (state.phase === 'mulligan') turnTxt = '準備中';
+  else if (state.phase === 'over') turnTxt = '試合終了';
+  else if (state.turnSide === 'p') { turnTxt = state.phase === 'clash' ? 'あなたの衝突!' : 'あなたのターン'; turnCls = 'p'; }
+  else { turnTxt = state.phase === 'clash' ? 'CPUの衝突!' : 'CPUのターン'; turnCls = 'c'; }
+  return `<div class="gauge">
+    <div class="g-top">
+      <span class="l">◀ CPU −${GAUGE_MAX}</span>
+      <span class="turn ${turnCls}">${turnTxt}</span>
+      <span class="r">+${GAUGE_MAX} あなた ▶</span>
+    </div>
+    <div class="g-track">
+      ${ticks}
+      <div id="g-fill" class="g-fill"></div>
+      <div id="g-marker" class="g-marker ${mCls}">${g > 0 ? '+' + g : g}</div>
+    </div>
+  </div>`;
+}
+
+/** 自分の情報バー(熱は通常分と持ち越し分を色分け) */
+function renderMyBar() {
+  const p = P('p');
+  const active = state.turnSide === 'p' && state.phase !== 'over' && state.phase !== 'mulligan';
+  let pips = '';
+  for (let i = 0; i < p.heatMax; i++) pips += `<span class="pip ${i < p.heatBase ? 'on' : ''}"></span>`;
+  // 持ち越し・ボーナス分(最大値を超えた分)は別色
+  const extraShown = Math.max(p.heatExtra, 0);
+  for (let i = 0; i < extraShown; i++) pips += `<span class="pip cx on"></span>`;
+  const cx = p.heatExtra > 0 ? `<span class="cx">+${p.heatExtra}</span>` : '';
+  return `<div class="bar me ${active ? 'active' : ''}">
+    <span class="stat heatnum">熱 <b>${p.heatBase}</b>${cx}/${p.heatMax}<span class="pips">${pips}</span></span>
+    <span class="stat">ターン <b>${p.turn}</b>/${TURNS_PER_PLAYER}</span>
+    <span class="stat">山札 <b>${p.deck.length}</b></span>
+  </div>`;
+}
+
+/** カード1枚のHTML */
+function renderCard(id, idx, extraCls = '', act = 'card') {
+  const c = CARD_MAP[id];
+  return `<button class="card ${extraCls}" style="--uc:${c.color}" ${act ? `data-act="${act}" data-i="${idx}"` : ''}>
+    <div class="c-head"><span class="c-cost">${c.cost}</span><span class="c-name">${c.name}</span></div>
+    <div class="c-stats"><span class="atk">⚔${c.atk}</span><span class="hp">♥${c.hp}</span></div>
+    <div class="c-text">${c.text}</div>
+  </button>`;
+}
+
+/** 手札(横スクロール) */
+function renderHand() {
+  const p = P('p');
+  const heat = heatTotal(p);
+  const discarding = state.phase === 'discard';
+  let note;
+  if (discarding) {
+    note = `<div class="hand-note warn"><span>手札が多すぎます!あと${p.hand.length - HAND_MAX}枚捨ててください</span></div>`;
+  } else {
+    note = `<div class="hand-note"><span>手札 ${p.hand.length}/${HAND_MAX}</span><span>${state.selected !== null ? '置くレーンをタップ' : 'カードをタップで選択'}</span></div>`;
+  }
+  let cards = '';
+  p.hand.forEach((id, i) => {
+    const cls = [];
+    if (!discarding && CARD_MAP[id].cost > heat) cls.push('poor');
+    if (!discarding && state.selected === i) cls.push('sel');
+    if (discarding && state.discardSel === i) cls.push('dsel');
+    cards += renderCard(id, i, cls.join(' '));
+  });
+  if (!cards) cards = '<div class="empty-hand">手札がありません</div>';
+  return `<div class="hand-wrap">${note}<div class="hand">${cards}</div></div>`;
+}
+
+/** 操作ボタン */
+function renderControls() {
+  if (state.phase === 'discard') {
+    return `<div class="controls">
+      <button class="btn danger" data-act="discard" ${state.discardSel === null ? 'disabled' : ''}>
+        ${state.discardSel === null ? '捨てるカードを選択' : 'このカードを捨てる'}
+      </button></div>`;
+  }
+  const can = state.phase === 'main';
+  let label = 'ターン終了';
+  if (state.phase === 'cpu') label = 'CPUが考え中…';
+  else if (state.phase === 'clash') label = '衝突中…';
+  return `<div class="controls"><button class="btn" data-act="end" ${can ? '' : 'disabled'}>${label}</button></div>`;
+}
+
+/** バトルログ(直近5行) */
+function renderLog() {
+  const lines = state.log.slice(-LOG_LINES).map(l => `<div class="${l.cls}">${l.text}</div>`).join('');
+  return `<div class="log">${lines}</div>`;
+}
+
+/** モーダル(引き直し確認/勝敗表示) */
+function renderModal() {
+  if (state.phase === 'mulligan') {
+    const p = P('p');
+    const isFirst = state.first === 'p';
+    const hand = p.hand.map((id, i) => renderCard(id, i, 'mini', null)).join('');
+    const btns = state.mulliganUsed
+      ? `<button class="btn" data-act="keep">この手札で開始</button>`
+      : `<button class="btn sub" data-act="mull">引き直す</button><button class="btn" data-act="keep">このまま</button>`;
+    return `<div class="modal-bg"><div class="modal">
+      <h1>オシキリビースト</h1>
+      <div class="order ${isFirst ? 'p' : 'c'}">あなたは${isFirst ? '先攻' : '後攻'}です</div>
+      <p>${isFirst ? '先攻1ターン目は衝突できません' : '後攻1ターン目は熱+1'}</p>
+      <div class="mini-hand">${hand}</div>
+      <p>${state.mulliganUsed ? '引き直しました' : '手札を1回だけ引き直せます'}</p>
+      <div class="btns">${btns}</div>
+    </div></div>`;
+  }
+  if (state.phase === 'over' && state.result) {
+    const w = state.result.winner;
+    const title = w === 'p' ? '勝利!' : w === 'c' ? '敗北…' : '引き分け';
+    const cls = w === 'p' ? 'win' : w === 'c' ? 'lose' : 'draw';
+    return `<div class="modal-bg late"><div class="modal">
+      <h2 class="${cls}">${title}</h2>
+      <p>${state.result.reason}</p>
+      <div class="btns"><button class="btn" data-act="again">もう一度</button></div>
+    </div></div>`;
+  }
+  return '';
+}
+
+/* =========================================================
+   入力処理(タップ)
+   ========================================================= */
+root.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const act = el.dataset.act;
+  const i = el.dataset.i !== undefined ? Number(el.dataset.i) : null;
+  switch (act) {
+    case 'card': onTapCard(i); break;
+    case 'lane': onTapLane(i); break;
+    case 'end':  if (state.phase === 'main') endTurn('p'); break;
+    case 'discard': confirmDiscard(); break;
+    case 'mull': mulligan(); break;
+    case 'keep': beginMatch(); break;
+    case 'again': newGame(); break;
+  }
+});
+
+/** 手札カードをタップ:選択/選択解除(捨てる時は捨てる候補を選ぶ) */
+function onTapCard(i) {
+  if (state.phase === 'discard') {
+    state.discardSel = state.discardSel === i ? null : i;
+    render();
+    return;
+  }
+  if (state.phase !== 'main') return;
+  if (state.selected === i) { state.selected = null; render(); return; }
+  const card = CARD_MAP[P('p').hand[i]];
+  if (card.cost > heatTotal(P('p'))) { showToast('熱が足りません'); return; }
+  if (P('p').lanes.every(u => u)) { showToast('空いているレーンがありません'); return; }
+  state.selected = i;
+  render();
+}
+
+/** 自分のレーンをタップ:選択中のカードを配置 */
+function onTapLane(lane) {
+  if (state.phase !== 'main' || state.selected === null) return;
+  if (P('p').lanes[lane]) { showToast('そのレーンは埋まっています'); return; }
+  if (placeUnit('p', state.selected, lane)) state.selected = null;
+  render();
+}
+
+/* ===== 起動 ===== */
+newGame();
+</script>
+</body>
+</html>
