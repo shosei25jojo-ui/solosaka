@@ -260,6 +260,65 @@ button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
 .detail .d-text{font-size:14px;line-height:1.5;background:rgba(0,0,0,.3);border-radius:10px;padding:10px;margin-bottom:14px}
 .detail .d-flavor{font-size:12px;color:var(--sub);margin:-8px 0 12px}
 
+/* ===== ごきげん・本気モード ===== */
+.unit .u-head{display:flex;flex-direction:column;align-items:center}
+.unit .u-title{font-size:12px;font-weight:800;color:var(--gold);line-height:1.1;letter-spacing:1px}
+.unit .atk.up{color:#ffe14a}
+.unit.honki{
+  border-color:var(--gold);
+  box-shadow:0 0 10px rgba(255,212,71,.55),inset 0 0 0 2px var(--side);
+}
+.gk{display:inline-flex;gap:3px;align-items:center;margin-right:2px}
+.gk i{width:9px;height:9px;border-radius:50%;background:#3a4363;border:1px solid #6b7699;display:block}
+.gk i.on{background:#ff8fc7;border-color:#ffd1e8}
+.unit.honki .gk i.on{background:var(--gold);border-color:#fff3b0}
+.gk i.pop{animation:gkpop .6s ease-out}
+@keyframes gkpop{0%{transform:scale(1)}30%{transform:scale(2.1);box-shadow:0 0 8px #ff8fc7}100%{transform:scale(1)}}
+.cell.flash{animation:goldflash .6s ease-out}
+@keyframes goldflash{
+  0%{box-shadow:0 0 0 0 rgba(255,212,71,0);background:rgba(255,212,71,.0)}
+  30%{box-shadow:0 0 26px 10px rgba(255,212,71,.95);background:rgba(255,212,71,.45)}
+  100%{box-shadow:0 0 0 0 rgba(255,212,71,0);background:rgba(255,255,255,.02)}
+}
+#app.shake{animation:shake .3s linear}
+@keyframes shake{
+  0%,100%{transform:translate(0,0)}
+  20%{transform:translate(-5px,2px)}
+  40%{transform:translate(5px,-2px)}
+  60%{transform:translate(-4px,-1px)}
+  80%{transform:translate(3px,1px)}
+}
+#honki{
+  position:fixed;left:50%;top:42%;z-index:75;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;opacity:0;white-space:nowrap;
+}
+#honki.show{animation:honki 1.2s ease-out forwards}
+@keyframes honki{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.4)}
+  15%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}
+  25%{transform:translate(-50%,-50%) scale(1)}
+  80%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(1.05)}
+}
+#honki .hk-label{
+  font-size:30px;font-weight:900;color:var(--gold);
+  text-shadow:0 0 12px rgba(255,170,0,.9),0 3px 0 #7a4a00;
+}
+#honki .hk-name{
+  margin-top:4px;font-size:22px;font-weight:900;color:#fff;
+  background:rgba(10,14,25,.85);border:2px solid var(--gold);border-radius:14px;padding:6px 14px;
+  box-shadow:0 0 20px rgba(255,212,71,.6);
+}
+#honki .hk-name.p{border-color:var(--gold)}
+#honki .hk-title{color:var(--gold);margin-right:2px}
+#honki .hk-read{margin-top:3px;font-size:12px;color:#ffe9a0;text-shadow:0 1px 3px #000}
+.detail .d-title{color:var(--gold)}
+.detail .d-gk{display:flex;align-items:center;gap:6px;font-size:13px;margin-bottom:8px;flex-wrap:wrap}
+.detail .d-tag.honki{background:var(--gold);color:#1a1300}
+.detail .d-honki{font-size:13px;line-height:1.5;background:rgba(255,212,71,.1);border:1px solid rgba(255,212,71,.4);border-radius:10px;padding:8px 10px;margin:-6px 0 14px}
+.detail .d-honki-h b{color:var(--gold)}
+.detail .d-honki-note{font-size:12px;color:var(--sub);margin-top:2px}
+
 /* ===== トースト ===== */
 #toast{
   position:fixed;left:50%;bottom:30%;transform:translateX(-50%);z-index:80;
@@ -281,6 +340,7 @@ button{font:inherit;color:inherit;border:none;background:none;cursor:pointer}
 <body>
 <div id="app"></div>
 <div id="toast"></div>
+<div id="honki"></div>
 <div id="rotate">📱 縦向きにしてください</div>
 
 <script>
@@ -307,6 +367,10 @@ const EFFECT_WAIT      = 650; // 効果発動を見せる時間(ms)
 const POPUP_MS         = 800; // 効果名ポップアップの表示時間(ms)
 const LONG_PRESS_MS    = 500; // 長押し判定(ms)
 const LOG_LINES        = 5;   // 表示するログ行数
+const GOKIGEN_MAX      = 3;   // ごきげん上限(3で本気モード)
+const GOKIGEN_ATK_AT   = 2;   // このごきげんで攻撃+1
+const HONKI_HP_BONUS   = 2;   // 本気効果なしカードの体力最大値ボーナス
+const HONKI_SHOW_MS    = 1200;// 本気モード中央表示の時間(ms)
 const LANE_NAMES       = ['左', '中', '右'];
 
 /* =========================================================
@@ -314,6 +378,8 @@ const LANE_NAMES       = ['左', '中', '右'];
    copies: デッキに入れる枚数(0 = 定義のみ)
    text  : カード上に表示する短い効果テキスト
    desc  : 長押し詳細で表示する説明文
+   title / titleReading : 本気モードで付く漢字の肩書きと読み
+   honkiText: 本気効果の説明文
    effect: タイミング別フックとフラグ(不要なカードはnull)
      フック
        onPlace(state, unit)               … 場に出したとき
@@ -321,25 +387,41 @@ const LANE_NAMES       = ['左', '中', '右'];
        onDestroyEnemy(state, unit, enemy) … 自分のダメージで敵を破壊したとき
        getAttackModifier(state, unit, target)
          … 盤上にいる unit(この効果の持ち主)が、target の攻撃値に加える補正を返す。
-           攻撃値 = 基本攻撃 + 盤上の全ユニットの補正の合計(0未満にはならない)
+           攻撃値 = 基本攻撃 + ごきげんボーナス + 盤上の全ユニットの補正の合計(0未満にはならない)
+       onGokigenGain(state, unit, amount) … ごきげんの増加量を変えて返す
+       onHonki(state, unit)               … 本気モードになった瞬間
+       ※本気効果は getAttackModifier / onCollideAfter の中で unit.honki を見て分岐する
+       ※onCollideAfter は何か起きたら true を返す(演出の待ち時間を取る)
      フラグ
        firstStrike  … 先制(先にダメージを与え、倒せば反撃を受けない)
        ignoreDeploy … 着陣中でも衝突できる
        freeMove     … 熱0で移動でき、1ターン1回の回数に数えない
        numbOnHit    … ダメージを与えて生き残った敵を「しびれ」にする
+       honkiEffect  … 本気効果を持つ(持たないカードは本気モードで体力の最大値+2)
    ========================================================= */
 const CARDS = [
   { id: 'homurabion',  name: 'ホムラビオン',   cost: 1, atk: 1, hp: 2, copies: 2, color: '#ff6a2e',
+    title: '業炎兎', titleReading: 'ごうえんと',
     text: '本気モードになると攻撃+2',
     desc: '本気モードになると攻撃+2。',
-    effect: null },
+    honkiText: '攻撃+2(ごきげん2の+1と合わせて合計+3)',
+    effect: {
+      honkiEffect: true,
+      getAttackModifier(state, unit, target) {
+        return (target === unit && unit.honki) ? 2 : 0;
+      },
+    } },
   { id: 'hinokorou',   name: 'ヒノコロウ',     cost: 1, atk: 2, hp: 1, copies: 2, color: '#ff3b3b',
+    title: '火走狼', titleReading: 'ひばしりろう',
     text: '速攻役',
     desc: '速攻役。熱1で攻撃2を出せるが、体力は1しかない。特別な効果はない。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: null },
   { id: 'kiramedaka',  name: 'キラメダカ',     cost: 2, atk: 1, hp: 3, copies: 2, color: '#ffe14a',
+    title: '星鱗魚', titleReading: 'せいりんぎょ',
     text: '場に出したときカードを1枚引く',
     desc: '場に出したとき、カードを1枚引く(山札が0枚なら引かない)。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: {
       onPlace(state, unit) {
         popup(unit, 'キラッ!1枚ドロー');
@@ -348,34 +430,49 @@ const CARDS = [
       },
     } },
   { id: 'awagamet',    name: 'アワガメット',   cost: 2, atk: 0, hp: 5, copies: 2, color: '#4ad2ff',
+    title: '泡鉄甲', titleReading: 'ほうてっこう',
     text: '壁役',
     desc: '壁役。攻撃は0だが体力5で敵の攻撃を受け止める。特別な効果はない。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: null },
   { id: 'borukitsune', name: 'ボルキツネ',     cost: 3, atk: 2, hp: 3, copies: 2, color: '#ffc02e',
+    title: '雷尾狐', titleReading: 'らいびこ',
     text: '衝突時、隣レーンの敵にも1ダメージ',
     desc: '自分が衝突した後、左右の隣レーンにいる敵ユニットそれぞれに1ダメージ。向かいが空でも発動する。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: {
       onCollideAfter(state, unit) {
         const foes = adjacentLanes(unit.lane)
           .map(l => P(opp(unit.side)).lanes[l])
           .filter(e => e && e.hp > 0);
-        if (!foes.length) return;
+        if (!foes.length) return false;
         popup(unit, 'パチッ!隣に1ダメージ');
         foes.forEach(e => dealDamage(e, 1, unit));
         addLog(`ボルキツネのパチッ!${foes.map(e => e.name).join('と')}に1ダメージ`, 'fx');
+        return true;
       },
     } },
   { id: 'sabakuroko',  name: 'サバクロコ',     cost: 3, atk: 3, hp: 3, copies: 1, color: '#c8a050',
+    title: '砂嵐鰐', titleReading: 'さらんがく',
     text: '衝突で生き残るとごきげん+2',
-    desc: '衝突で生き残るとごきげん+2。',
-    effect: null },
+    desc: '衝突で生き残ったときのごきげん増加が+1ではなく+2になる(上限3は同じ)。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
+    effect: {
+      onGokigenGain(state, unit, amount) {
+        return amount + 1;
+      },
+    } },
   { id: 'nokufukurou', name: 'ノクフクロウ',   cost: 3, atk: 2, hp: 2, copies: 1, color: '#9a6aff',
+    title: '夜翔梟', titleReading: 'やしょうきょう',
     text: '移動に熱を使わない',
     desc: '熱0で移動できる。この移動は「1ターン1回」の回数に数えない(ノクフクロウ自身の移動は1ターン1回まで)。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: { freeMove: true } },
   { id: 'shizukurake', name: 'シズクラーケ',   cost: 4, atk: 2, hp: 4, copies: 1, color: '#3a7cff',
+    title: '深淵海魔', titleReading: 'しんえんかいま',
     text: '向かいの敵の攻撃-1',
     desc: '向かいにいる敵ユニットの攻撃を-1する(0未満にはならない)。場にいる限り常に有効。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: {
       popupText: 'ジワッ!攻撃-1',
       getAttackModifier(state, unit, target) {
@@ -383,20 +480,28 @@ const CARDS = [
       },
     } },
   { id: 'benomukade',  name: 'ベノムカデ',     cost: 4, atk: 2, hp: 4, copies: 1, color: '#a0ff3a',
+    title: '猛毒百足', titleReading: 'もうどくむかで',
     text: 'ダメージを与えた敵は次の衝突で攻撃できない',
     desc: 'ベノムカデのダメージを受けて生き残った敵は「しびれ」になり、次の自分のターンの衝突を1回スキップする(ダメージもゲージ押しもしない)。防御側としての反撃は通常どおり行う。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: { numbOnHit: true } },
   { id: 'tsurarapto',  name: 'ツララプトル',   cost: 5, atk: 4, hp: 4, copies: 1, color: '#9af0ff',
+    title: '氷刃竜', titleReading: 'ひょうじんりゅう',
     text: '出したターンから衝突に参加できる',
     desc: '着陣中でも、出したターンから衝突に参加できる。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: { ignoreDeploy: true } },
   { id: 'ikazuchita',  name: 'イカヅチーター', cost: 5, atk: 5, hp: 3, copies: 1, color: '#fff04a',
+    title: '雷迅', titleReading: 'らいじん',
     text: '衝突で必ず先に攻撃する',
     desc: '⚡先制:向かいの敵と衝突するとき、攻撃側・防御側どちらでも先にダメージを与える。それで敵を破壊したら自分はダメージを受けない。両方が先制なら通常どおり同時。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: { firstStrike: true } },
   { id: 'yukihyouga',  name: 'ユキヒョウガ',   cost: 6, atk: 4, hp: 6, copies: 1, color: '#d8f4ff',
+    title: '白銀豹', titleReading: 'はくぎんひょう',
     text: '敵を倒すたびにゲージを1押す',
     desc: '自分のダメージで敵を破壊するたびに、ゲージを相手側に1押す(攻撃側・防御側どちらで倒しても発動)。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: {
       onDestroyEnemy(state, unit, enemy) {
         popup(unit, 'ガオッ!ゲージを1押す');
@@ -405,8 +510,10 @@ const CARDS = [
       },
     } },
   { id: 'gotsuinodon', name: 'ゴツイノドン',   cost: 6, atk: 3, hp: 8, copies: 1, color: '#a08060',
+    title: '岩砕猪', titleReading: 'がんさいちょ',
     text: '場に出したときゲージを1押す',
     desc: '場に出したとき、ゲージを相手側に1押す。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: {
       onPlace(state, unit) {
         popup(unit, 'ドスン!ゲージを1押す');
@@ -415,8 +522,10 @@ const CARDS = [
       },
     } },
   { id: 'tenkujira',   name: 'テンクウジラ',   cost: 7, atk: 5, hp: 8, copies: 1, color: '#6ab0ff',
+    title: '天空王', titleReading: 'てんくうおう',
     text: '場に出したとき敵全員に1ダメージ',
     desc: '場に出したとき、敵ユニット全員に1ダメージ。',
+    honkiText: 'なし(代わりに本気モードで体力の最大値+2)',
     effect: {
       onPlace(state, unit) {
         popup(unit, 'ザブーン!敵全員に1ダメージ');
@@ -425,9 +534,20 @@ const CARDS = [
       },
     } },
   { id: 'hikaryuga',   name: 'ヒカリュウガ',   cost: 7, atk: 6, hp: 6, copies: 1, color: '#fff8c0',
+    title: '極光竜', titleReading: 'きょっこうりゅう',
     text: '本気モード中、衝突のたびにゲージを2押す',
-    desc: '本気モード中、衝突のたびにゲージを2押す。',
-    effect: null },
+    desc: '本気モード中、自分が衝突するたびに、通常の衝突処理のあとでゲージを相手側に2押す。',
+    honkiText: '本気モード中、自分が衝突するたびに、通常の衝突処理のあとでゲージを相手側に2押す(向かいに敵がいてもいなくても発動)',
+    effect: {
+      honkiEffect: true,
+      onCollideAfter(state, unit) {
+        if (!unit.honki) return false;
+        popup(unit, 'カッ!極光でゲージ2押す');
+        pushGaugeFor(unit.side, 2);
+        addLog('極光竜ヒカリュウガの極光!ゲージを2押した', 'fx');
+        return true;
+      },
+    } },
 ];
 const CARD_MAP = Object.fromEntries(CARDS.map(c => [c.id, c]));
 
@@ -533,6 +653,7 @@ function hasHook(unit, hook) {
  *  extra: まだ盤上にいない仮ユニット(CPUの配置予測用) */
 function effAtk(unit, target = null, extra = []) {
   let v = unit.atk;
+  if ((unit.gokigen || 0) >= GOKIGEN_ATK_AT) v += 1; // ごきげん2以上で攻撃+1
   boardUnits().concat(extra).forEach(src => {
     if (hasHook(src, 'getAttackModifier')) v += effectOf(src).getAttackModifier(state, src, unit, target);
   });
@@ -752,6 +873,9 @@ async function placeUnit(side, handIdx, lane) {
     sick: true,        // 着陣中(このターンは衝突しない。ignoreDeployは例外)
     numb: false,       // しびれ(次の自分の衝突を1回スキップ)
     movedTurn: 0,      // 最後に移動した自分のターン番号(freeMove用)
+    gokigen: 0,        // ごきげん(0〜3)
+    honki: false,      // 本気モード
+    gokigenAt: 0, gokigenFrom: 0, honkiAt: 0, // 演出用のタイムスタンプ
     hitAt: 0, dying: false, justPlaced: true, killedBy: null,
   };
   pl.lanes[lane] = unit;
@@ -891,7 +1015,7 @@ async function resolveClash(side, lane) {
       toD = dealDamage(d, atkA, a);
       toA = dealDamage(a, atkD, d);
     }
-    addLog(`${a.name}と${d.name}が衝突!(${toD}/${toA}ダメージ)`, side);
+    addLog(`${dispName(a)}と${dispName(d)}が衝突!(${toD}/${toA}ダメージ)`, side);
     if (fa && !fd && d.hp <= 0) addLog(`⚡${a.name}の先制!反撃を受けなかった`, 'fx');
     if (fd && !fa && a.hp <= 0) addLog(`⚡${d.name}の先制!反撃を受けなかった`, 'fx');
     applyNumb(a, d, toD);
@@ -903,7 +1027,7 @@ async function resolveClash(side, lane) {
     // 向かいが空:攻撃値ぶんゲージを相手側へ押す
     const atk = effAtk(a, null);
     pushGaugeFor(side, atk);
-    addLog(`${a.name}がゲージを${atk}押した`, side);
+    addLog(`${dispName(a)}がゲージを${atk}押した`, side);
     render();
     await sleep(CLASH_INTERVAL);
     if (gid !== state.gameId) return;
@@ -912,18 +1036,89 @@ async function resolveClash(side, lane) {
 
   // 衝突後の効果(ボルキツネ等)
   if (hasHook(a, 'onCollideAfter')) {
-    effectOf(a).onCollideAfter(state, a);
-    render();
-    await sleep(EFFECT_WAIT);
-    if (gid !== state.gameId) return;
+    if (effectOf(a).onCollideAfter(state, a)) {
+      render();
+      await sleep(EFFECT_WAIT);
+      if (gid !== state.gameId) return;
+    }
     if (checkWin()) return;
   }
 
   await settleDeaths(d ? [a, d] : null);
   if (gid !== state.gameId || isOver()) return;
+
+  // 衝突のあとも場に残っていれば、ごきげん+1
+  if (me.lanes[a.lane] === a && a.hp > 0) {
+    await gainGokigen(a);
+    if (gid !== state.gameId || isOver()) return;
+  }
   state.activeLane = null;
   render();
   checkWin();
+}
+
+/* ---------- ごきげん・本気モード ---------- */
+
+/** 表示名(本気モードなら肩書き付き) */
+function dispName(u) {
+  return u.honki ? CARD_MAP[u.id].title + u.name : u.name;
+}
+
+/** ごきげんを増やす(onGokigenGainで増加量が変わる)。3で本気モード */
+async function gainGokigen(u) {
+  const gid = state.gameId;
+  if (u.gokigen >= GOKIGEN_MAX) return;
+  let amount = 1;
+  if (hasHook(u, 'onGokigenGain')) amount = effectOf(u).onGokigenGain(state, u, amount);
+  const before = u.gokigen;
+  u.gokigen = Math.min(GOKIGEN_MAX, before + amount);
+  const gained = u.gokigen - before;
+  if (gained <= 0) return;
+  u.gokigenFrom = before;
+  u.gokigenAt = Date.now();
+  addLog(`${u.name}のごきげん+${gained}(${u.gokigen}/${GOKIGEN_MAX})`, u.side);
+  if (before < GOKIGEN_ATK_AT && u.gokigen >= GOKIGEN_ATK_AT) {
+    popup(u, 'ごきげん!攻撃+1');
+    addLog(`${u.name}はごきげんで攻撃+1`, 'fx');
+  }
+  render();
+  await sleep(350);
+  if (gid !== state.gameId) return;
+  if (u.gokigen >= GOKIGEN_MAX && !u.honki) await enterHonki(u);
+}
+
+/** 本気モードになる:肩書き・全回復・本気効果(なければ体力最大値+2)・演出 */
+async function enterHonki(u) {
+  const gid = state.gameId;
+  const card = CARD_MAP[u.id];
+  u.honki = true;
+  u.honkiAt = Date.now();
+  if (!hasFlag(u, 'honkiEffect')) u.maxHp += HONKI_HP_BONUS;
+  u.hp = u.maxHp;
+  if (hasHook(u, 'onHonki')) effectOf(u).onHonki(state, u);
+  addLog(`${u.name}が本気モード!${dispName(u)}`, 'sys');
+  render();
+  showHonkiBanner(u);
+  await sleep(HONKI_SHOW_MS);
+  if (gid !== state.gameId) return;
+  render();
+  checkWin();
+}
+
+/** 画面を揺らし、中央に「本気モード!」と肩書き付きの名前を出す */
+function showHonkiBanner(u) {
+  const card = CARD_MAP[u.id];
+  const el = document.getElementById('honki');
+  el.innerHTML = `<div class="hk-label">本気モード!</div>
+    <div class="hk-name ${u.side}"><span class="hk-title">${card.title}</span>${u.name}</div>
+    <div class="hk-read">${card.titleReading}</div>`;
+  el.classList.remove('show');
+  void el.offsetWidth; // アニメーションを最初から再生
+  el.classList.add('show');
+  root.classList.remove('shake');
+  void root.offsetWidth;
+  root.classList.add('shake');
+  setTimeout(() => root.classList.remove('shake'), 300);
 }
 
 /** ターン終了処理:衝突→手札上限→熱持ち越し→相手のターンへ */
@@ -1149,7 +1344,11 @@ function renderRow(side) {
     const canMove = mv && mv.targets.includes(i);
     const active = state.activeLane === i ? 'active' : '';
     const attrs = side === 'p' ? `data-act="lane" data-i="${i}"` : '';
-    html += `<div class="cell ${can ? 'can' : ''} ${canMove ? 'can-move' : ''} ${active}" ${attrs}>`;
+    // 本気モードになった瞬間の金色フラッシュ(0.6秒)
+    const flashMs = u ? now - u.honkiAt : Infinity;
+    const flash = flashMs < 600;
+    const flashStyle = flash ? `style="animation-delay:-${flashMs}ms"` : '';
+    html += `<div class="cell ${can ? 'can' : ''} ${canMove ? 'can-move' : ''} ${active} ${flash ? 'flash' : ''}" ${flashStyle} ${attrs}>`;
     if (u) html += renderUnit(u);
     else if (canMove) html += `<span class="empty">ここへ移動</span>`;
     else html += `<span class="empty">${can ? 'ここに置く' : LANE_NAMES[i] + ' 空き'}</span>`;
@@ -1170,6 +1369,7 @@ function renderUnit(u) {
   if (u.dying) cls.push('dying');
   if (u.justPlaced) cls.push('placed');
   if (u.side === 'p' && state.moveSel === u.lane) cls.push('msel');
+  if (u.honki) cls.push('honki');
   const atk = effAtk(u, facing(u));
   const hpCls = ['hp'];
   let hpStyle = '';
@@ -1183,10 +1383,22 @@ function renderUnit(u) {
   return `<div class="${cls.join(' ')}" style="--uc:${card.color}" ${act} data-detail="${u.id}" data-uid="${u.uid}">
     <span class="u-cost">${card.cost}</span>
     ${hasFlag(u, 'firstStrike') ? '<span class="u-fs">⚡</span>' : ''}
-    <div class="u-name">${u.name}</div>
-    <div class="u-stats"><span class="atk ${atk < u.atk ? 'down' : ''}">⚔${atk}</span><span class="${hpCls.join(' ')}" ${hpStyle}>♥${Math.max(0, u.hp)}</span></div>
-    ${tags.length ? `<div class="tags">${tags.join('')}</div>` : '<div class="lbl">攻撃 / 体力</div>'}
+    <div class="u-head">${u.honki ? `<div class="u-title">${card.title}</div>` : ''}<div class="u-name">${u.name}</div></div>
+    <div class="u-stats"><span class="atk ${atk < u.atk ? 'down' : atk > u.atk ? 'up' : ''}">⚔${atk}</span><span class="${hpCls.join(' ')}" ${hpStyle}>♥${Math.max(0, u.hp)}</span></div>
+    <div class="tags">${renderGokigen(u)}${tags.join('')}</div>
   </div>`;
+}
+
+/** ごきげんを3つの丸で表示(増えた丸は一瞬大きくなる) */
+function renderGokigen(u) {
+  const since = Date.now() - u.gokigenAt;
+  let html = '<span class="gk" title="ごきげん">';
+  for (let i = 0; i < GOKIGEN_MAX; i++) {
+    const on = i < u.gokigen;
+    const pop = on && i >= u.gokigenFrom && since < 600;
+    html += `<i class="${on ? 'on' : ''} ${pop ? 'pop' : ''}" ${pop ? `style="animation-delay:-${since}ms"` : ''}></i>`;
+  }
+  return html + '</span>';
 }
 
 /** おしあいゲージ */
@@ -1336,10 +1548,12 @@ function renderDetail() {
   if (state.detail.uid) {
     ['p', 'c'].forEach(s => P(s).lanes.forEach(x => { if (x && x.uid === state.detail.uid) u = x; }));
   }
-  let stats, owner = '', tags = [];
+  let stats, owner = '', tags = [], gk = '';
   if (u) {
     const atk = effAtk(u, facing(u));
-    stats = `<span class="atk ${atk < u.atk ? 'down' : ''}">攻撃 ${atk}${atk !== u.atk ? ` <small>(基本${u.atk})</small>` : ''}</span>
+    gk = `<div class="d-gk">ごきげん ${renderGokigen(u)} ${u.gokigen}/${GOKIGEN_MAX}
+      ${u.honki ? '<span class="d-tag honki">本気モード中</span>' : ''}</div>`;
+    stats = `<span class="atk ${atk < u.atk ? 'down' : atk > u.atk ? 'up' : ''}">攻撃 ${atk}${atk !== u.atk ? ` <small>(基本${u.atk})</small>` : ''}</span>
              <span class="hp">体力 ${Math.max(0, u.hp)}<small>/${u.maxHp}</small></span>`;
     owner = `${u.side === 'p' ? 'あなた' : 'CPU'}の${LANE_NAMES[u.lane]}レーン`;
     if (u.sick) tags.push(hasFlag(u, 'ignoreDeploy') ? '<span class="d-tag">即参戦</span>' : '<span class="d-tag sick">着陣中</span>');
@@ -1350,10 +1564,16 @@ function renderDetail() {
   if (c.effect && c.effect.firstStrike) tags.push('<span class="d-tag">⚡先制</span>');
   return `<div class="modal-bg top" data-act="closeDetail"><div class="modal detail" style="--uc:${c.color}">
     <div class="d-head"><span class="c-cost">${c.cost}</span>
-      <div><div class="d-name">${c.name}</div>${owner ? `<div class="d-owner">${owner}</div>` : ''}</div></div>
+      <div><div class="d-name">${u && u.honki ? `<span class="d-title">${c.title}</span>` : ''}${c.name}</div>${owner ? `<div class="d-owner">${owner}</div>` : ''}</div></div>
     <div class="d-stats">${stats}</div>
+    ${gk}
     ${tags.length ? `<div class="d-tags">${tags.join('')}</div>` : ''}
     <div class="d-text">${c.desc}</div>
+    <div class="d-honki">
+      <div class="d-honki-h">本気モードの肩書き:<b>${c.title}</b>(${c.titleReading})</div>
+      <div>本気効果:${c.honkiText}</div>
+      <div class="d-honki-note">ごきげん2で攻撃+1/ごきげん3で本気モード(体力全回復)</div>
+    </div>
     <div class="btns"><button class="btn sub" data-act="closeDetail">閉じる</button></div>
   </div></div>`;
 }
